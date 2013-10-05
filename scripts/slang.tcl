@@ -27,16 +27,29 @@ namespace eval ud {
 	# show truncated message / url if more than one line
 	variable show_truncate 1
 
+	# bool. toggle debug output.
+	variable debug 0
+
 	variable client "Mozilla/5.0 (compatible; Y!J; for robot study; keyoshid)"
-	variable url http://www.urbandictionary.com/define.php
-	variable list_regexp {<td class='text'.*? id='entry_.*?'>.*?</td>}
-	variable def_regexp {id='entry_(.*?)'>.*?<div class="definition">(.*?)</div>}
+	variable url {http://www.urbandictionary.com/define.php}
+
+	# regex to find all definition(s).
+	variable list_regex {<div class='text'.*? id='entry_.*?'>.*?<div class='zazzle_links'>}
+	# regex to parse a single definition.
+	variable def_regex {id='entry_(.*?)'>.*?<div class="definition">(.*?)</div><div class="example">(.*?)</div>}
 
 	settings_add_str "slang_enabled_channels" ""
 	signal_add msg_pub $ud::trigger ud::handler
 
 	# 0 if isgd package is present
 	variable isgd_disabled [catch {package require isgd}]
+}
+
+proc ::ud::log {msg} {
+	if {!$::ud::debug} {
+		return
+	}
+	irssi_print "slang: $msg"
 }
 
 proc ud::handler {server nick uhost chan argv} {
@@ -62,38 +75,58 @@ proc ud::handler {server nick uhost chan argv} {
 }
 
 proc ud::fetch {query number server channel} {
-	http::config -useragent $ud::client
+	::http::config -useragent $ud::client
 	set page [expr {int(ceil($number / 7.0))}]
 	set number [expr {$number - (($page - 1) * 7)}]
 
-	set http_query [http::formatQuery term $query page $page]
+	set http_query [::http::formatQuery term $query page $page]
 
-	set token [http::geturl $ud::url -timeout 20000 -query $http_query -command "ud::output $server $channel [list $query] $number"]
+	set token [::http::geturl $ud::url -timeout 20000 -query $http_query \
+		-command "::ud::fetch_cb $server $channel [list $query] $number"]
 }
 
-# Callback from HTTP get in ud::fetch
-proc ud::output {server channel query number token} {
-	set data [http::data $token]
-	set ncode [http::ncode $token]
-	http::cleanup $token
-
-	if {$ncode != 200} {
-		putchan $server $channel "HTTP fetch error. Code: $ncode"
+# take the raw query response data and output it to the channel as necessary.
+# first we parse it.
+#
+# one reason to keep this as a separate proc from fetch_cb is so that we can
+# catch errors in fetch_cb for easier reporting due to fetch_cb being
+# an async callback from ::http::geturl which has various gotchas.
+proc ::ud::output {server channel query number data} {
+	# parse out the definitions & examples.
+	set definitions [regexp -all -inline -- $::ud::list_regex $data]
+	set definition_count [llength $definitions]
+	if {[expr $definition_count < $number]} {
+		putchan $server $channel "Error: $definition_count definition(s) found."
 		return
 	}
 
-	set definitions [regexp -all -inline -- $ud::list_regexp $data]
-	if {[llength $definitions] < $number} {
-		putchan $server $channel "Error: [llength $definitions] definitions found."
-		return
+	# find the definition we want.
+	set definition [lindex $definitions [expr {$number - 1}]]
+	# parse it out.
+	set result [::ud::parse $query $definition]
+
+	# build the url to the definition.
+	set def_url [::ud::def_url $query $result]
+
+	# build and output the definition lines.
+	set lines [::ud::split_line $::ud::line_length [dict get $result definition]]
+	set line_count 0
+	foreach line $lines {
+		if {[incr line_count] > $::ud::max_lines} {
+			if {$::ud::show_truncate} {
+				putchan $server $channel "Output truncated. $def_url"
+			}
+			break
+		}
+		putchan $server $channel "$line"
 	}
-
-	set result [ud::parse $query [lindex $definitions [expr {$number - 1}]]]
-
-	foreach line [ud::split_line $ud::line_length [dict get $result definition]] {
+	# build and output the example lines.
+	set lines [::ud::split_line $ud::line_length [dict get $result example]]
+	set line_count 0
+	foreach line $lines {
 		if {[incr output] > $ud::max_lines} {
 			if {$ud::show_truncate} {
-				putchan $server $channel "Output truncated. [ud::def_url $query $result]"
+				putchan $server $channel "Output truncated. $def_url"
 			}
 			break
 		}
@@ -101,19 +134,57 @@ proc ud::output {server channel query number token} {
 	}
 }
 
-proc ud::parse {query raw_definition} {
-	if {![regexp $ud::def_regexp $raw_definition -> number definition]} {
-		error "Could not parse HTML"
+# Callback from HTTP get in ud::fetch
+proc ::ud::fetch_cb {server channel query number token} {
+	if {[string equal [::http::status $token] "error"]} {
+		set msg [::http::error $token]
+		putchan $server $channel "HTTP query error: $msg"
+		::http::cleanup $token
+		return
 	}
-	set definition [htmlparse::mapEscapes $definition]
-	set definition [regsub -all -- {<.*?>} $definition ""]
-	set definition [regsub -all -- {\n+} $definition " "]
-	set definition [string tolower $definition]
-	return [list number $number definition "$query is $definition"]
+	set data [::http::data $token]
+	set ncode [::http::ncode $token]
+	::http::cleanup $token
+
+	if {$ncode != 200} {
+		putchan $server $channel "HTTP fetch error. Response status code: $ncode."
+		return
+	}
+
+	if {[catch {::ud::output $server $channel $query $number $data} msg]} {
+		putchan $server $channel "Output failure: $msg"
+		return
+	}
+}
+
+# take a string, s, from the raw html of a query, and sanitise it for output.
+# this should be run on both the definition and the example text.
+proc ::ud::sanitise_text {s} {
+	set s [htmlparse::mapEscapes $s]
+	set s [regsub -all -- {<.*?>} $s ""]
+	set s [regsub -all -- {\s+} $s " "]
+	set s [string tolower $s]
+	return $s
+}
+
+# 
+proc ::ud::parse {query raw_definition} {
+	if {![regexp $::ud::def_regex $raw_definition -> number definition example]} {
+		error "Could not parse the definition."
+	}
+	set definition [::ud::sanitise_text $definition]
+	set example [::ud::sanitise_text $example]
+
+	set d [dict create]
+	dict set d number $number
+	dict set d definition "$query is $definition"
+	dict set d example $example
+
+	return $d
 }
 
 proc ud::def_url {query result} {
-	set raw_url ${ud::url}?[http::formatQuery term $query defid [dict get $result number]]
+	set raw_url ${ud::url}?[::http::formatQuery term $query defid [dict get $result number]]
 	if {$ud::isgd_disabled} {
 		return $raw_url
 	} else {
