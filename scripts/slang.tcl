@@ -57,6 +57,7 @@ proc ud::handler {server nick uhost chan argv} {
 		return
 	}
 
+	set argv [string trim $argv]
 	set argv [split $argv]
 	if {[string is digit [lindex $argv 0]]} {
 		set number [lindex $argv 0]
@@ -65,6 +66,7 @@ proc ud::handler {server nick uhost chan argv} {
 		set query [join $argv]
 		set number 1
 	}
+	set query [string trim $query]
 
 	if {$query == ""} {
 		putchan $server $chan "Usage: $ud::trigger \[#\] <definition to look up>"
