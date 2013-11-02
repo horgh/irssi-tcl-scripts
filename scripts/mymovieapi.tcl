@@ -37,8 +37,6 @@ proc ::mma::::log {msg} {
 # output a single search result from a search query.
 # data is a dict - converted json result.
 proc ::mma::output_search_result {server chan data} {
-	::mma::log "output_search_result: data: $data"
-
 	# dict key we want.
 	# we want to check that each is present and have a sane default
 	# if it is not.
@@ -48,12 +46,10 @@ proc ::mma::output_search_result {server chan data} {
 	set d [dict create]
 	foreach field $fields {
 		if {![dict exists $data $field]} {
-			::mma::log "output_search_result: field $field not found"
 			dict append d $field {}
 			continue
 		}
 		set value [dict get $data $field]
-		::mma::log "output_search_result: field $field value $value"
 		dict append d $field $value
 	}
 	set title        [dict get $d title]
@@ -79,7 +75,6 @@ proc ::mma::output_search_result {server chan data} {
 	set country_str [string trim $country_str]
 
 	set o "\002$title\002 ($year) ($type) ($country_str) Rating: $rating ($rating_count votes) ($genre_str) $plot_simple"
-	::mma::log "output_search_result: output string: $o"
 	putchan $server $chan $o
 }
 
@@ -87,16 +82,19 @@ proc ::mma::output_search_result {server chan data} {
 # data is a list of dicts - the converted json.
 # TODO confirm this is a list
 proc ::mma::output_search {server chan data} {
-	::mma::log "output_search: in output_search"
-
-	# we may have an error (such as no result).
-	# we receive an error if this is not a dict (such as when
-	# we have results) so wrap it in a catch.
-	if {![catch {dict exists $data error} exists]} {
-		# error exists.
-		set error [dict get $data error]
-		putchan $server $chan "Error: $error"
-		return
+	# wrap dict call looking for error in a catch in case
+	# we somehow do not have a dict - such as a critical error
+	# from the API. or in the case of success in which we receive
+	# a list of dicts - so dict calls on it can fail.
+	# the first catch is to check if we may have a dict. we then
+	# check if there is an error key if it appears to be a dict.
+	if {![catch {dict exists $data error} err]} {
+		# we may have an error (such as no result).
+		if {[dict exists $data error]} {
+			set error [dict get $data error]
+			putchan $server $chan "Error: $error"
+			return
+		}
 	}
 
 	foreach result $data {
@@ -106,9 +104,7 @@ proc ::mma::output_search {server chan data} {
 
 # callback from http::geturl for a search query.
 proc ::mma::search_cb {server chan token} {
-	::mma::log "search_cb: in callback"
 	set data [::http::data $token]
-	::mma::log "search_db: data: $data"
 	::http::cleanup $token
 
 	# json2dict can return success if we receive an html page
@@ -129,7 +125,6 @@ proc ::mma::search_cb {server chan token} {
 	  putchan $server $chan "Failed to parse the response"
 		return
 	}
-	::mma::log "search_cb: json $data"
 
 	# cache it.
 	# TODO
