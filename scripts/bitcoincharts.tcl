@@ -1,5 +1,5 @@
 #
-# 26/2/2013
+# 2013-02-26
 # will@summercat.com
 #
 # retrieve and output some markets data from bitcoincharts.com.
@@ -15,11 +15,10 @@ package require tls
 
 namespace eval ::bitcoincharts {
 	# url to query.
-	variable url {http://bitcoincharts.com/t/markets.json}
-	#variable url {https://leviathan.summercat.com/~a/code/markets.json}
+	variable url {http://api.bitcoincharts.com/v1/markets.json}
 
 	# symbols we output.
-	#variable symbols [list mtgoxUSD mtgoxCAD mtgoxEUR btceUSD virtexCAD]
+	# some examples: mtgoxUSD, mtgoxCAD, mtgoxEUR, btceUSD, virtexCAD
 	variable symbols [list mtgoxUSD]
 
 	# amount of time to wait between queries. minutes.
@@ -33,6 +32,10 @@ namespace eval ::bitcoincharts {
 
 	# debug output.
 	variable debug 1
+
+	# the keys we expect in a symbol's result.
+	variable symbol_keys [list symbol high latest_trade bid volume currency \
+		currency_volume ask close avg low]
 
 	signal_add msg_pub !btc ::bitcoincharts::btc_handler
 	signal_add msg_pub .btc ::bitcoincharts::btc_handler
@@ -105,7 +108,8 @@ proc ::bitcoincharts::format_double_thousands {v} {
 	return $full
 }
 
-# @param dict $data The market data which we use for output
+# @param list $data The market data which we use for output.
+#   We expect this to have been validated. This is a list of dicts.
 #
 # @return void
 #
@@ -119,27 +123,27 @@ proc ::bitcoincharts::output_market_data {server chan data} {
 			continue
 		}
 
-		set high [dict get $d high]
-		set latest_trade [dict get $d latest_trade]
-		set bid [dict get $d bid]
-		set volume [dict get $d volume]
-		set currency [dict get $d currency]
+		set high            [dict get $d high]
+		set latest_trade    [dict get $d latest_trade]
+		set bid             [dict get $d bid]
+		set volume          [dict get $d volume]
+		set currency        [dict get $d currency]
 		set currency_volume [dict get $d currency_volume]
-		set ask [dict get $d ask]
-		set close [dict get $d close]
-		set avg [dict get $d avg]
-		set low [dict get $d low]
+		set ask             [dict get $d ask]
+		set close           [dict get $d close]
+		set avg             [dict get $d avg]
+		set low             [dict get $d low]
 
 		# format the values a bit.
 		set latest_trade [clock format $latest_trade]
 
-		set high [::bitcoincharts::format_double $high]
-		set bid [::bitcoincharts::format_double $bid]
+		set high            [::bitcoincharts::format_double $high]
+		set bid             [::bitcoincharts::format_double $bid]
 		set currency_volume [::bitcoincharts::format_double $currency_volume]
-		set ask [::bitcoincharts::format_double $ask]
-		set close [::bitcoincharts::format_double $close]
-		set avg [::bitcoincharts::format_double $avg]
-		set low [::bitcoincharts::format_double $low]
+		set ask             [::bitcoincharts::format_double $ask]
+		set close           [::bitcoincharts::format_double $close]
+		set avg             [::bitcoincharts::format_double $avg]
+		set low             [::bitcoincharts::format_double $low]
 
 		set volume [::bitcoincharts::format_double_thousands $volume]
 
@@ -150,17 +154,68 @@ proc ::bitcoincharts::output_market_data {server chan data} {
 	}
 }
 
+# @param list $data A list of dicts.
+#
+# @return bool success
+#
+# take a supposed list of dict from a query to the API, and update our cache
+# with it.
+#
+# we check that the list and each dict looks correct - since on errors from
+# the API it may not be.
+proc ::bitcoincharts::set_cache {data} {
+	# no matter what, we clear our cache. this is so that upon invalid
+	# data we do not leave old data in the cache.
+	set ::bitcoincharts::cache {}
+
+	if {[llength $data] == 0} {
+		::bitcoincharts::log "set_cache: no results"
+		return 0
+	}
+	foreach d $data {
+		# sanity check this is a dict.
+		if {[catch {dict info $d}]} {
+			::bitcoincharts::log "set_cache: invalid dict"
+			return 0
+		}
+		# check we have each key we expect.
+		foreach key $::bitcoincharts::symbol_keys {
+			if {![dict exists $d $key]} {
+				::bitcoincharts::log "set_cache: missing key: $key"
+				return 0
+			}
+		}
+	}
+	set ::bitcoincharts::cache $data
+	return 1
+}
+
 # callback for HTTP query for new market data.
 proc ::bitcoincharts::get_market_data_cb {server chan token} {
 	set data [::http::data $token]
+	set status [::http::status $token]
+	set code [::http::code $token]
+	set ncode [::http::ncode $token]
 	::http::cleanup $token
 	::bitcoincharts::log "get_market_data_cb: in callback"
+
+	if {$status != "ok"} {
+		::bitcoincharts::log "get_market_data_cb: failure: status is: $status: $code"
+		return
+	}
+	if {$ncode != 200} {
+		::bitcoincharts::log "get_market_data_cb: unexpected http code: $ncode: $code"
+		return
+	}
 
 	# convert to a dict.
 	set data [::json::json2dict $data]
 
 	# cache it.
-	set ::bitcoincharts::cache $data
+	if {![::bitcoincharts::set_cache $data]} {
+		::bitcoincharts::log "get_market_data_cb: failed to set cache"
+		return
+	}
 
 	# output.
 	::bitcoincharts::output_market_data $server $chan $data
@@ -171,7 +226,7 @@ proc ::bitcoincharts::get_market_data_cb {server chan token} {
 proc ::bitcoincharts::get_market_data {server chan} {
 	# we may need to use our cache since we do not want to hit the API
 	# too often.
-	# so chck if have we already queried the API.
+	# so check if have we already queried the API.
 	if {$::bitcoincharts::last_query != {}} {
 		# we want to know if the next time we can query the API is still
 		# in the future.
