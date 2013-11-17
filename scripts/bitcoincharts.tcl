@@ -24,8 +24,9 @@ namespace eval ::bitcoincharts {
 	# amount of time to wait between queries. minutes.
 	variable query_delay 15
 
-	# last time we queried - cannot query more than every 15 min.
-	variable last_query {}
+	# last time we queried - cannot query more than every query_delay min.
+	# unixtime.
+	variable last_query_time 0
 
 	# cache results of prior queries.
 	variable cache {}
@@ -147,8 +148,6 @@ proc ::bitcoincharts::output_market_data {server chan data} {
 
 		set volume [::bitcoincharts::format_double_thousands $volume]
 
-		#set s "\002Bitcoin Market Data\002 ($symbol) ($currency): High: \$$high Low \$$low Bid: \$$bid Ask: \$$ask Average: \$$avg Close: \$$close Volume: $volume Currency volume: $currency_volume Latest trade: $latest_trade"
-
 		set s "\002Bitcoin\002 ($symbol): \002Last\002: $close ($latest_trade) \002Range\002: ($low - $high) \002Spread\002: ($bid X $ask) \002Volume\002: $volume"
 		putchan $server $chan $s
 	}
@@ -224,24 +223,28 @@ proc ::bitcoincharts::get_market_data_cb {server chan token} {
 # retrieve market data either from a new request or use the cache
 # if we requested recently.
 proc ::bitcoincharts::get_market_data {server chan} {
-	# we may need to use our cache since we do not want to hit the API
-	# too often.
-	# so check if have we already queried the API.
-	if {$::bitcoincharts::last_query != {}} {
-		# we want to know if the next time we can query the API is still
-		# in the future.
-		set delay_seconds [expr $::bitcoincharts::query_delay * 60]
-		set next_query_time [expr $::bitcoincharts::last_query + $delay_seconds]
-		set current_time [clock seconds]
-		if {[expr $next_query_time > $current_time] } {
+	# first we try to use our cache if we have made a recent API request.
+	# we want to know if the next time we can query the API is still
+	# in the future.
+	set delay_seconds [expr $::bitcoincharts::query_delay * 60]
+	set next_query_time [expr $::bitcoincharts::last_query_time + $delay_seconds]
+	set current_time [clock seconds]
+	if {[expr $next_query_time > $current_time] } {
+		# we can't make another query yet, so try to use our cache.
+		::bitcoincharts::log "get_market_data: cannot make a new request yet"
+		# we may not have a valid cached result - for instance if the last
+		# request failed or has not completed yet.
+		if {$::bitcoincharts::cache != {}} {
 			::bitcoincharts::log "get_market_data: using cache"
 			::bitcoincharts::output_market_data $server $chan \
 				$::bitcoincharts::cache
-			return
 		}
+		return
 	}
 
-	set ::bitcoincharts::last_query [clock seconds]
+	# reset our cache, and set the last query time.
+	set ::bitcoincharts::last_query_time [clock seconds]
+	set ::bitcoincharts::cache {}
 	::bitcoincharts::log "get_market_data: performing new request"
 	set token [::http::geturl $::bitcoincharts::url -timeout 60000 \
 		-command "::bitcoincharts::get_market_data_cb $server $chan"]
