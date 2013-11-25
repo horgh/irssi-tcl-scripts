@@ -17,9 +17,12 @@ namespace eval ::bitcoincharts {
 	# url to query.
 	variable url {http://api.bitcoincharts.com/v1/markets.json}
 
-	# symbols we output.
-	# some examples: mtgoxUSD, mtgoxCAD, mtgoxEUR, btceUSD, virtexCAD
-	variable symbols [list mtgoxUSD]
+	# symbols we output. we group them by currency.
+	variable symbols [dict create \
+		usd [list mtgoxUSD btceUSD bitstampUSD] \
+		cad [list virtexCAD mtgoxCAD] \
+		eur [list mtgoxEUR btceEUR] \
+	]
 
 	# amount of time to wait between queries. minutes.
 	variable query_delay 15
@@ -115,12 +118,15 @@ proc ::bitcoincharts::format_double_thousands {v} {
 # @return void
 #
 # output market data for all of the symbols we are configured to output for.
-proc ::bitcoincharts::output_market_data {server chan data} {
+proc ::bitcoincharts::output_market_data {server chan data currency} {
+	# market symbols to output are based on the currency we are given.
+	set symbols [dict get $::bitcoincharts::symbols $currency]
+
 	# we have a list of dicts with symbol data in each dict.
 	foreach d $data {
 		set symbol [dict get $d symbol]
 		# is this a symbol we want to output?
-		if {[lsearch -exact $::bitcoincharts::symbols $symbol] == -1} {
+		if {[lsearch -exact $symbols $symbol] == -1} {
 			continue
 		}
 
@@ -190,7 +196,7 @@ proc ::bitcoincharts::set_cache {data} {
 }
 
 # callback for HTTP query for new market data.
-proc ::bitcoincharts::get_market_data_cb {server chan token} {
+proc ::bitcoincharts::get_market_data_cb {server chan currency token} {
 	set data [::http::data $token]
 	set status [::http::status $token]
 	set code [::http::code $token]
@@ -217,12 +223,12 @@ proc ::bitcoincharts::get_market_data_cb {server chan token} {
 	}
 
 	# output.
-	::bitcoincharts::output_market_data $server $chan $data
+	::bitcoincharts::output_market_data $server $chan $data $currency
 }
 
 # retrieve market data either from a new request or use the cache
 # if we requested recently.
-proc ::bitcoincharts::get_market_data {server chan} {
+proc ::bitcoincharts::get_market_data {server chan currency} {
 	# first we try to use our cache if we have made a recent API request.
 	# we want to know if the next time we can query the API is still
 	# in the future.
@@ -237,7 +243,7 @@ proc ::bitcoincharts::get_market_data {server chan} {
 		if {$::bitcoincharts::cache != {}} {
 			::bitcoincharts::log "get_market_data: using cache"
 			::bitcoincharts::output_market_data $server $chan \
-				$::bitcoincharts::cache
+				$::bitcoincharts::cache $currency
 		}
 		return
 	}
@@ -247,16 +253,31 @@ proc ::bitcoincharts::get_market_data {server chan} {
 	set ::bitcoincharts::cache {}
 	::bitcoincharts::log "get_market_data: performing new request"
 	set token [::http::geturl $::bitcoincharts::url -timeout 60000 \
-		-command "::bitcoincharts::get_market_data_cb $server $chan"]
+		-command "::bitcoincharts::get_market_data_cb $server $chan $currency"]
 }
 
-# msg_pub signal handler to retrieve and output
-# market data.
+# msg_pub signal handler to retrieve and output market data.
 proc ::bitcoincharts::btc_handler {server nick uhost chan argv} {
 	if {![str_in_settings_str "bitcoincharts_enabled_channels" $chan]} {
 		return
 	}
-	::bitcoincharts::get_market_data $server $chan
+
+	# default to currency usd if no currency specified.
+	set currency usd
+
+	# we may be given a currency as an argument.
+	set argv [string trim $argv]
+	set argv [string tolower $argv]
+	if {[expr [string length $argv] > 0]} {
+		if {![dict exists $::bitcoincharts::symbols $argv]} {
+			set currencies [dict keys $::bitcoincharts::symbols]
+			putchan $server $chan "Valid currencies are: $currencies"
+			return
+		}
+		set currency $argv
+	}
+
+	::bitcoincharts::get_market_data $server $chan $currency
 }
 
 # unit tests for format_double_thousands()
