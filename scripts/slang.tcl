@@ -34,9 +34,9 @@ namespace eval ud {
 	variable url {http://www.urbandictionary.com/define.php}
 
 	# regex to find all definition(s).
-	variable list_regex {<div class='text'.*? id='entry_.*?'>.*?<div class='zazzle_links'>}
+	variable list_regex {<div class='box'.*? data-defid='[0-9]+'>.*?<div class='footer'>}
 	# regex to parse a single definition.
-	variable def_regex {id='entry_(.*?)'>.*?<div class="definition">(.*?)</div><div class="example">(.*?)</div>}
+	variable def_regex {<div class='box'.*? data-defid='([0-9]+)'>.*?<div class='definition'>(.*?)</div>.*?<div class='example'>(.*?)</div>}
 
 	settings_add_str "slang_enabled_channels" ""
 	signal_add msg_pub $ud::trigger ud::handler
@@ -166,6 +166,7 @@ proc ::ud::sanitise_text {s} {
 	set s [regsub -all -- {<.*?>} $s ""]
 	set s [regsub -all -- {\s+} $s " "]
 	set s [string tolower $s]
+	set s [string trim $s]
 	return $s
 }
 
