@@ -36,7 +36,7 @@ namespace eval ud {
 	# regex to find all definition(s).
 	variable list_regex {<div class='box'.*? data-defid='[0-9]+'>.*?<div class='footer'>}
 	# regex to parse a single definition.
-	variable def_regex {<div class='box'.*? data-defid='([0-9]+)'>.*?<div class='definition'>(.*?)</div>.*?<div class='example'>(.*?)</div>}
+	variable def_regex {<div class='box'.*? data-defid='([0-9]+)'>.*?<div class='meaning'>(.*?)</div>.*?<div class='example'>(.*?)</div>}
 
 	settings_add_str "slang_enabled_channels" ""
 	signal_add msg_pub $ud::trigger ud::handler
