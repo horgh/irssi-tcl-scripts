@@ -19,7 +19,7 @@ namespace eval ::bitcoincharts {
 
 	# symbols we output. we group them by currency.
 	variable symbols [dict create \
-		usd [list mtgoxUSD btceUSD bitstampUSD] \
+		usd [list btceUSD bitstampUSD] \
 		cad [list virtexCAD mtgoxCAD] \
 		eur [list mtgoxEUR btceEUR] \
 	]
@@ -62,6 +62,9 @@ proc ::bitcoincharts::::log {msg} {
 #
 # format a double to less precision
 proc ::bitcoincharts::format_double {v} {
+	if {$v == "null" || $v == ""} {
+		set v 0
+	}
 	set v [format %.5f $v]
 	return $v
 }
@@ -73,6 +76,9 @@ proc ::bitcoincharts::format_double {v} {
 # format a double to less precision and also insert commas
 # between every 3 (non decimal) digits.
 proc ::bitcoincharts::format_double_thousands {v} {
+	if {$v == "null" || $v == ""} {
+		set v 0
+	}
 	set v [::bitcoincharts::format_double $v]
 	# break the string on the '.'.
 	set number_parts [split $v .]
@@ -197,17 +203,22 @@ proc ::bitcoincharts::set_cache {data} {
 
 # callback for HTTP query for new market data.
 proc ::bitcoincharts::get_market_data_cb {server chan currency token} {
-	set data [::http::data $token]
-	set status [::http::status $token]
-	set code [::http::code $token]
-	set ncode [::http::ncode $token]
-	::http::cleanup $token
 	::bitcoincharts::log "get_market_data_cb: in callback"
 
+	# check status first.
+	set status [::http::status $token]
 	if {$status != "ok"} {
-		::bitcoincharts::log "get_market_data_cb: failure: status is: $status: $code"
+		set http_error [::http::error $token]
+		::bitcoincharts::log "get_market_data_cb: failure: status is: $status: $http_error"
+		::http::cleanup $token
 		return
 	}
+
+	set data [::http::data $token]
+	set ncode [::http::ncode $token]
+	set code [::http::code $token]
+	::http::cleanup $token
+
 	if {$ncode != 200} {
 		::bitcoincharts::log "get_market_data_cb: unexpected http code: $ncode: $code"
 		return
