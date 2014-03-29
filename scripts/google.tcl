@@ -5,20 +5,24 @@
 # Requires tcllib for json
 #
 
+package require htmlparse
 package require http
 package require json
-package require htmlparse
+package require tls
 
 namespace eval ::google {
 	variable useragent_api "Lynx/2.8.8dev.2 libwww-FM/2.14 SSL-MM/1.4.1"
 	variable useragent_convert "Mozilla/5.0 (X11; Linux i686; rv:8.0) Gecko/20100101 Firefox/8.0"
 
-	variable convert_url "http://www.google.ca/search"
+	variable convert_url "https://www.google.ca/search"
 	variable convert_regexp {<table class=std>.*?<b>(.*?)</b>.*?</table>}
 
 	variable api_url "http://ajax.googleapis.com/ajax/services/search/"
 
 	variable api_referer "http://www.egghelp.org"
+
+	# debug mode on or off.
+	variable debug 0
 
 	signal_add msg_pub "!g"       ::google::search
 	signal_add msg_pub "!google"  ::google::search
@@ -28,6 +32,14 @@ namespace eval ::google {
 	signal_add msg_pub "!convert" ::google::convert
 
 	settings_add_str "google_enabled_channels" ""
+}
+
+# print a debug message.
+proc ::google::log {msg} {
+	if {!$::google::debug} {
+		return
+	}
+	irssi_print "google: $msg"
 }
 
 # Query normal html for conversions
@@ -40,12 +52,20 @@ proc ::google::convert {server nick uhost chan argv} {
 	}
 
 	::http::config -useragent $::google::useragent_convert
+	::http::register https 443 ::tls::socket
 	set query [::http::formatQuery q $argv]
 	set token [::http::geturl ${::google::convert_url}?${query} \
 		-command "::google::convert_callback $server $chan"]
 }
 
 proc ::google::convert_callback {server chan token} {
+	set status [::http::status $token]
+	if {$status != "ok"} {
+		set http_error [::http::error $token]
+		::google::log "convert_callback: failure: status is: $status: $http_error"
+		::http::cleanup $token
+		return
+	}
 	set data [::http::data $token]
 	set ncode [::http::ncode $token]
 	::http::cleanup $token
@@ -57,6 +77,7 @@ proc ::google::convert_callback {server chan token} {
 
 	if {$ncode != 200} {
 		putchan $server $chan "HTTP query failed: $ncode"
+		::google::log "convert_callback: data: $data"
 		return
 	}
 
@@ -70,8 +91,19 @@ proc ::google::convert_callback {server chan token} {
 
 proc ::google::convert_parse {html} {
 	if {![regexp -- $::google::convert_regexp $html -> result]} {
+		#set fid [open /tmp/g-debug.txt w]
+		#puts $fid $html
+		#close $fid
 		error "Parse error or no result"
 	}
+
+	# it seems that since I wrote this script the plain text result output
+	# for the unit converter has gone away. it's now a widget that you can
+	# toggle units and type of conversion. so it's trickier to pull out what
+	# we want and may vary in form quite a lot.
+	# if there's an API that would be the much better approach... but I'm not
+	# sure there is one.
+
 	set result [::htmlparse::mapEscapes $result]
 	# change <sup>num</sup> to ^num (exponent)
 	set result [regsub -all -- {<sup>(.*?)</sup>} $result {^\1}]
@@ -100,11 +132,19 @@ proc ::google::api_handler {server chan argv url {num {}}} {
 	}
 
 	::http::config -useragent $::google::useragent_api
+	::http::register https 443 ::tls::socket
 	set token [::http::geturl ${url}?${query} -headers $headers -method GET \
 		-command "::google::api_callback $server $chan $num"]
 }
 
 proc ::google::api_callback {server chan num token} {
+	set status [::http::status $token]
+	if {$status != "ok"} {
+		set http_error [::http::error $token]
+		::google::log "api_callback: failure: status is: $status: $http_error"
+		::http::cleanup $token
+		return
+	}
 	set data [::http::data $token]
 	set ncode [::http::ncode $token]
 	::http::cleanup $token
