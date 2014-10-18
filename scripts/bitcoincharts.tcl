@@ -46,7 +46,7 @@ namespace eval ::bitcoincharts {
 
 	settings_add_str "bitcoincharts_enabled_channels" ""
 
-	::http::register https 443 ::tls::socket
+	::http::register https 443 [list ::tls::socket -ssl2 0 -ssl3 0 -tls1 1]
 }
 
 proc ::bitcoincharts::::log {msg} {

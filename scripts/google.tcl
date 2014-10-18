@@ -52,7 +52,7 @@ proc ::google::convert {server nick uhost chan argv} {
 	}
 
 	::http::config -useragent $::google::useragent_convert
-	::http::register https 443 ::tls::socket
+	::http::register https 443 [list ::tls::socket -ssl2 0 -ssl3 0 -tls1 1]
 	set query [::http::formatQuery q $argv]
 	set token [::http::geturl ${::google::convert_url}?${query} \
 		-command "::google::convert_callback $server $chan"]
@@ -132,7 +132,7 @@ proc ::google::api_handler {server chan argv url {num {}}} {
 	}
 
 	::http::config -useragent $::google::useragent_api
-	::http::register https 443 ::tls::socket
+	::http::register https 443 [list ::tls::socket -ssl2 0 -ssl3 0 -tls1 1]
 	set token [::http::geturl ${url}?${query} -headers $headers -method GET \
 		-command "::google::api_callback $server $chan $num"]
 }

@@ -26,7 +26,7 @@ namespace eval urltitle {
 
 	signal_add msg_pub "*" urltitle::urltitle
 
-	::http::register https 443 ::tls::socket
+	::http::register https 443 [list ::tls::socket -ssl2 0 -ssl3 0 -tls1 1]
 
 	variable debug 0
 }
