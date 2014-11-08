@@ -288,6 +288,11 @@ proc urltitle::translate_charset {charset} {
 	regsub -- {windows-1252} $charset cp1252 charset
 	# utf8 -> utf-8
 	regsub -- {utf8} $charset utf-8 charset
+	# known issue:
+	# http://item.taobao.com/item.htm?spm=a1z10.1.w5003-1534844088.9.jxzqSB&id=25873632122&scene=taobao_shop
+	# ! Tcl: Error: unknown encoding "gbk"
+	# I think this encoding is not supported in Tcl at this time from what
+	# I can tell...
 	urltitle::log "translate_charset: have charset $charset after translate"
 	return $charset
 }
