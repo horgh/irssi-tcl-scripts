@@ -36,15 +36,29 @@ proc ::latoc::fetch {type pattern server chan} {
 	set token [::http::geturl ${::latoc::commodities_url}${type} -timeout 20000 -command "::latoc::output [list $pattern] $server $chan"]
 }
 
-# Callback from ::http::geturl
+# output is the callback proc from ::http::geturl
 proc ::latoc::output {pattern server chan token} {
-	set data [::http::data $token]
-	set ncode [::http::ncode $token]
-	::http::cleanup $token
-	if {$ncode != 200} {
-		putchan $server $chan "HTTP error: (code: $ncode): $data"
+	# status tells us overall request status.
+	set status [::http::status $token]
+	if {$status != "ok"} {
+		set http_error [::http::error $token]
+		putchan $server $chan "HTTP error: $status: $http_error"
+		::http::cleanup $token
 		return
 	}
+	# we need HTTP 200.
+	set ncode [::http::ncode $token]
+	if {$ncode != 200} {
+		# code is something like "HTTP/1.1 500 Internal Server Error"
+		# NOTE: don't output data here as it could be a large HTML document.
+		set code [::http::code $token]
+		putchan $server $chan "HTTP error: $ncode: $code"
+		::http::cleanup $token
+		return
+	}
+	# everything seems OK, move on to looking at the body.
+	set data [::http::data $token]
+	::http::cleanup $token
 	set lines []
 	foreach stock [regexp -all -inline -- $::latoc::list_regexp $data] {
 		regexp $::latoc::stock_regexp $stock -> symbol name price last direction change percent
