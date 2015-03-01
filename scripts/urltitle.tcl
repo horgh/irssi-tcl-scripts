@@ -97,7 +97,7 @@ proc urltitle::recognise_url {potential_url} {
 # @return mixed the title (html decoded), or "" if not found
 #
 # pull the title out of the html body of a page
-proc urltitle::extract_title {data} {
+proc ::urltitle::extract_title {data} {
 	if {[regexp -nocase -- {<title>(.*?)</title>} $data -> title]} {
 		set title [regsub -all -- {\s+} $title " "]
 		urltitle::log "extract_title: found raw title $title"
@@ -164,12 +164,27 @@ proc urltitle::http_done {server chan redirect_count token} {
 
 	# convert the data to unicode (internal) from its encoding.
 	set data [encoding convertfrom $charset $data]
-	set title [extract_title $data]
+
+	# strip invalid unicode chars. see twitlib.tcl fix_status proc.
+	set filtered_data ""
+	for {set i 0} {$i < [string length $data]} {incr i} {
+		set char [string index $data $i]
+		# any unicode printing char including space.
+		if {![string is print -strict $char]} {
+			continue
+		}
+		append filtered_data $char
+	}
+
+	set title [::urltitle::extract_title $filtered_data]
 	if {$title != ""} {
 		urltitle::log "http_done: title after extracting/decoding: $title"
 		set output [string trim $title]
+
 		# we do not need to encode to utf-8 - that gets taken care of
-		# by functions other than us.
+		# by functions other than us. in particular when we call Tcl_GetString()
+		# in putchan_raw().
+
 		putchan $server $chan "\002$output"
 	}
 }
