@@ -34,20 +34,25 @@ namespace eval ::weather {
 
 	# file to save responses to if set.
 	# blank to not use.
-	variable save_response_file {}
+	variable save_response_file /tmp/weather.out
 
 	# file to read response from if set (for testing it can be nice to cache
 	# a response to avoid hitting API repeatedly).
 	# blank to not use.
-	#variable read_response_file /tmp/weather.out
 	variable read_response_file {}
 
-	# dict of query to dicts about responses
-	# response dict will have keys: request_time, and response.
-	variable cache [dict create]
+	# cache of responses.
+	# each is keyed by the query performed and associates
+	# with a sub-dict.
+	# sub-dict will have keys: request_time, and response.
+	# the response is the result of the lookup.
+	variable weather_cache [dict create]
+	variable forecast_cache [dict create]
 
 	signal_add msg_pub .wz ::weather::weather_pub
+	signal_add msg_pub .weather ::weather::weather_pub
 	signal_add msg_pub .wzf ::weather::forecast_pub
+	signal_add msg_pub .forecast ::weather::forecast_pub
 
 	settings_add_str "weather_enabled_channels" ""
 }
@@ -60,7 +65,7 @@ proc ::weather::weather_pub {server nick uhost chan argv} {
 
 	set argv [string trim $argv]
 	if {$argv == ""} {
-		putchan $server $chan $output "Usage: .wz <location>"
+		putchan $server $chan "Usage: .wz <location>"
 		return
 	}
 
@@ -79,9 +84,9 @@ proc ::weather::weather_pub {server nick uhost chan argv} {
 	append output [dict get $data country]
 
 	append output " ("
-	append output [dict get $data latitude]
+	append output [::weather::format_decimal [dict get $data latitude]]
 	append output "°N/"
-	append output [dict get $data longitude]
+	append output [::weather::format_decimal [dict get $data longitude]]
 	append output "°W)"
 
 	append output " \002Conditions\002: "
@@ -122,9 +127,52 @@ proc ::weather::forecast_pub {server nick uhost chan argv} {
 	if {![str_in_settings_str "weather_enabled_channels" $chan]} {
 		return
 	}
+
+	set argv [string trim $argv]
+	if {$argv == ""} {
+		putchan $server $chan "Usage: .wzf <location>"
+		return
+	}
+
+	set forecast [::weather::lookup_forecast $argv]
+	if {[dict get $forecast status] != "ok"} {
+		set msg [dict get $forecast message]
+		::weather::log "forecast_pub: $msg"
+		return
+	}
+	set data [dict get $forecast data]
+
+	set output ""
+	append output [dict get $data city]
+	append output ", "
+	append output [dict get $data country]
+
+	append output " ("
+	append output [::weather::format_decimal [dict get $data latitude]]
+	append output "°N/"
+	append output [::weather::format_decimal [dict get $data longitude]]
+	append output "°W) "
+	putchan $server $chan $output
+
+	set output ""
+	foreach forecast [dict get $data forecasts] {
+		if {$output != ""} {
+			append output " "
+		}
+		set day [clock format [dict get $forecast when] -format "%A"]
+		append output "\002$day\002: "
+		append output [dict get $forecast weather]
+		append output ", "
+
+		append output [dict get $forecast temperature_max]
+		append output "/"
+		append output [dict get $forecast temperature_min]
+		append output "°C"
+	}
+	putchan $server $chan $output
 }
 
-# query weather API for current weather
+# retrieve current weather
 #
 # parameters:
 # query: a search query string to find current weather at the location
@@ -135,7 +183,8 @@ proc ::weather::forecast_pub {server nick uhost chan argv} {
 # message: response message if error
 proc ::weather::lookup_weather {query} {
 	# may not need to make a new request.
-	if {$::weather::read_response_file != ""} {
+	if {$::weather::read_response_file != "" && \
+			[file exists $::weather::read_response_file]} {
 		::weather::log "lookup_weather: reading response from file"
 		set f [open $::weather::read_response_file]
 		set data [read -nonewline $f]
@@ -154,26 +203,74 @@ proc ::weather::lookup_weather {query} {
 	# may be cached
 	set query [string tolower $query]
 	set query [string trim $query]
-	if {[dict exists $::weather::cache $query]} {
-		set request_time [dict get $::weather::cache $query request_time]
+	if {[dict exists $::weather::weather_cache $query]} {
+		set request_time [dict get $::weather::weather_cache $query request_time]
 		set current_time [clock seconds]
 		set cached_until [expr $request_time+$::weather::cache_seconds]
 		if {[expr $current_time < $cached_until]} {
 			::weather::log "lookup_weather: using cache"
-			return [dict get $::weather::cache $query response]
+			return [dict get $::weather::weather_cache $query response]
 		}
 		::weather::log "lookup_weather: cache expired"
-		dict remove $::weather::cache $query
+		dict remove $::weather::weather_cache $query
 	}
 
 	# need to make an API request.
 	set cache [dict create request_time [clock seconds]]
-
 	set response [::weather::api_lookup_weather $query]
 	dict set cache response $response
+	dict set ::weather::weather_cache $query $cache
+	return $response
+}
 
-	dict set ::weather::cache $query $cache
+# retrieve current forecast
+#
+# parameters:
+# query: a search query string to find current weather at the location
+#
+# returns a dict with keys:
+# status: ok or error
+# data: dict with lookup data if present
+# message: response message if error
+proc ::weather::lookup_forecast {query} {
+	# may not need to make a new request.
+	if {$::weather::read_response_file != "" && \
+			[file exists $::weather::read_response_file]} {
+		::weather::log "lookup_forecast: reading response from file"
+		set f [open $::weather::read_response_file]
+		set data [read -nonewline $f]
+		close $f
 
+		set weather [::weather::parse_forecast $data]
+		if {$weather == ""} {
+			::weather::log "lookup_forecast: parse failure"
+			return [dict create status error message "Parse failure"]
+		}
+
+		::weather::log "lookup_forecast: parse success"
+		return [dict create status ok data $weather]
+	}
+
+	# may be cached
+	set query [string tolower $query]
+	set query [string trim $query]
+	if {[dict exists $::weather::forecast_cache $query]} {
+		set request_time [dict get $::weather::forecast_cache $query request_time]
+		set current_time [clock seconds]
+		set cached_until [expr $request_time+$::weather::cache_seconds]
+		if {[expr $current_time < $cached_until]} {
+			::weather::log "lookup_forecast: using cache"
+			return [dict get $::weather::forecast_cache $query response]
+		}
+		::weather::log "lookup_forecast: cache expired"
+		dict remove $::weather::forecast_cache $query
+	}
+
+	# need to make an API request.
+	set cache [dict create request_time [clock seconds]]
+	set response [::weather::api_lookup_forecast $query]
+	dict set cache response $response
+	dict set ::weather::forecast_cache $query $cache
 	return $response
 }
 
@@ -190,14 +287,15 @@ proc ::weather::api_lookup_weather {query} {
 	]
 
 	set full_url $url?$query
-	::weather::log "lookup_weather: making request: $full_url"
+	::weather::log "api_lookup_weather: making request: $full_url"
 	set token [::http::geturl $full_url \
 		-timeout $::weather::timeout \
+		-binary 1 \
 	]
 
 	set status [::http::status $token]
 	if {$status != "ok"} {
-		::weather::log "lookup_weather: status is $status"
+		::weather::log "api_lookup_weather: status is $status"
 		set http_error [::http::error $token]
 		::http::cleanup $token
 		return [dict create status error message $http_error]
@@ -205,27 +303,84 @@ proc ::weather::api_lookup_weather {query} {
 
 	set ncode [::http::ncode $token]
 	set data [::http::data $token]
+	set data [encoding convertfrom "utf-8" $data]
 	::http::cleanup $token
 
 	if {$::weather::save_response_file != ""} {
-		::weather::log "lookup_weather: saved response to file"
+		::weather::log "api_lookup_weather: saved response to file"
 		set f [open $::weather::save_response_file w]
 		puts -nonewline $f $data
 		close $f
 	}
 
 	if {$ncode != 200} {
-		::weather::log "lookup_weather: code is $ncode"
+		::weather::log "api_lookup_weather: code is $ncode"
 		return [dict create status error message "HTTP $ncode"]
 	}
 
 	set weather [::weather::parse_weather $data]
 	if {$weather == ""} {
-		::weather::log "lookup_weather: parse failure"
+		::weather::log "api_lookup_weather: parse failure"
 		return [dict create status error message "Parse failure"]
 	}
 
-	::weather::log "lookup_weather: parse success"
+	::weather::log "api_lookup_weather: parse success"
+	return [dict create status ok data $weather]
+}
+
+proc ::weather::api_lookup_forecast {query} {
+	::http::config -useragent $::weather::useragent
+	::http::register https 443 [list ::tls::socket -ssl2 0 -ssl3 0 -tls1 1]
+
+	set url $::weather::api_url/data/2.5/forecast/daily
+
+	# cnt means how many days of forecast to retrieve
+	set query [::http::formatQuery \
+		APPID $::weather::api_key \
+		q $query \
+		units metric \
+		cnt 4 \
+	]
+
+	set full_url $url?$query
+	::weather::log "api_lookup_forecast: making request: $full_url"
+	set token [::http::geturl $full_url \
+		-timeout $::weather::timeout \
+		-binary 1 \
+	]
+
+	set status [::http::status $token]
+	if {$status != "ok"} {
+		::weather::log "api_lookup_forecast: status is $status"
+		set http_error [::http::error $token]
+		::http::cleanup $token
+		return [dict create status error message $http_error]
+	}
+
+	set ncode [::http::ncode $token]
+	set data [::http::data $token]
+	set data [encoding convertfrom "utf-8" $data]
+	::http::cleanup $token
+
+	if {$::weather::save_response_file != ""} {
+		::weather::log "api_lookup_forecast: saved response to file"
+		set f [open $::weather::save_response_file w]
+		puts -nonewline $f $data
+		close $f
+	}
+
+	if {$ncode != 200} {
+		::weather::log "api_lookup_forecast: code is $ncode"
+		return [dict create status error message "HTTP $ncode"]
+	}
+
+	set weather [::weather::parse_forecast $data]
+	if {$weather == ""} {
+		::weather::log "api_lookup_forecast: parse failure"
+		return [dict create status error message "Parse failure"]
+	}
+
+	::weather::log "api_lookup_forecast: parse success"
 	return [dict create status ok data $weather]
 }
 
@@ -343,6 +498,110 @@ proc ::weather::parse_weather {data} {
 	dict set parsed clouds [dict get $decoded clouds all]
 
 	return $parsed
+}
+
+# take json and parse into a dict
+#
+# returns blank string if there is a problem
+proc ::weather::parse_forecast {data} {
+	set decoded [::json::json2dict $data]
+
+	# make a dict using expected keys from the response
+	set parsed [dict create]
+
+	# country
+	if {![dict exists $decoded city]} {
+		::weather::log "parse_forecast: missing city"
+		return ""
+	}
+	if {![dict exists $decoded city country]} {
+		::weather::log "parse_forecast: missing city country"
+		return ""
+	}
+	dict set parsed country [dict get $decoded city country]
+
+	# city
+	if {![dict exists $decoded city name]} {
+		::weather::log "parse_forecast: missing city name"
+		return ""
+	}
+	dict set parsed city [dict get $decoded city name]
+
+	# coords
+	if {![dict exists $decoded city coord]} {
+		::weather::log "parse_forecast: missing city coord"
+		return ""
+	}
+	if {![dict exists $decoded city coord lat]} {
+		::weather::log "parse_forecast: missing city coord lat"
+		return ""
+	}
+	if {![dict exists $decoded city coord lon]} {
+		::weather::log "parse_forecast: missing city coord lon"
+		return ""
+	}
+	dict set parsed latitude [dict get $decoded city coord lat]
+	dict set parsed longitude [dict get $decoded city coord lon]
+
+	# get each forecast
+	dict set parsed forecasts [list]
+	if {![dict exists $decoded list]} {
+		::weather::log "parse_forecast: missing list"
+		return ""
+	}
+	foreach weather [dict get $decoded list] {
+		set weather_parsed [dict create]
+		# there is more data available here but I'm only pulling out what I
+		# intend to show right now
+
+		# temps: min, max
+		if {![dict exists $weather temp]} {
+			::weather::log "parse_forecast: missing list temp"
+			return ""
+		}
+		if {![dict exists $weather temp min]} {
+			::weather::log "parse_forecast: missing list temp min"
+			return ""
+		}
+		if {![dict exists $weather temp max]} {
+			::weather::log "parse_forecast: missing list temp max"
+			return ""
+		}
+		dict set weather_parsed temperature_min [dict get $weather temp min]
+		dict set weather_parsed temperature_max [dict get $weather temp max]
+
+		# weather main
+		if {![dict exists $weather weather]} {
+			::weather::log "parse_forecast: missing list weather"
+			return ""
+		}
+		# this is a list... let's just take the first...
+		if {[llength [dict get $weather weather]] == 0} {
+			::weather::log "parse_forecast: missing list weather list"
+			return ""
+		}
+		set weather_desc [lindex [dict get $weather weather] 0]
+		if {![dict exists $weather_desc main]} {
+			::weather::log "parse_forecast: missing list weather main"
+			return ""
+		}
+		dict set weather_parsed weather [dict get $weather_desc main]
+
+		# when, unixtime
+		if {![dict exists $weather dt]} {
+			::weather::log "parse_forecast: missing list dt"
+			return ""
+		}
+		dict set weather_parsed when [dict get $weather dt]
+
+		dict lappend parsed forecasts $weather_parsed
+	}
+
+	return $parsed
+}
+
+proc ::weather::format_decimal {number} {
+	return [format "%.2f" $number]
 }
 
 proc ::weather::load_key {} {
