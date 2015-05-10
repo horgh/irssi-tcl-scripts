@@ -69,6 +69,12 @@ proc ::weather::weather_pub {server nick uhost chan argv} {
 		return
 	}
 
+	# I'm trying this method of making the request async as opposed to
+	# my usual method of ::http::geturl -command
+	after idle [list ::weather::weather_pub_async $server $nick $uhost $chan $argv]
+}
+
+proc ::weather::weather_pub_async {server nick uhost chan argv} {
 	set weather [::weather::lookup_weather $argv]
 	if {[dict get $weather status] != "ok"} {
 		set msg [dict get $weather message]
@@ -134,6 +140,12 @@ proc ::weather::forecast_pub {server nick uhost chan argv} {
 		return
 	}
 
+	# I'm trying this method of making the request async as opposed to
+	# my usual method of ::http::geturl -command
+	after idle [list ::weather::forecast_pub_async $server $nick $uhost $chan $argv]
+}
+
+proc ::weather::forecast_pub_async {server nick uhost chan argv} {
 	set forecast [::weather::lookup_forecast $argv]
 	if {[dict get $forecast status] != "ok"} {
 		set msg [dict get $forecast message]
