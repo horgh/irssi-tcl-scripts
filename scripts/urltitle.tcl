@@ -16,7 +16,6 @@ package require htmlparse
 package require idna
 
 namespace eval urltitle {
-	#variable useragent "Lynx/2.8.7rel.1 libwww-FM/2.14 SSL-MM/1.4.1 OpenSSL/0.9.8n"
 	variable useragent "Tcl http client package 2.7.5"
 	variable max_bytes 32768
 	variable max_redirects 3
@@ -107,30 +106,75 @@ proc ::urltitle::extract_title {data} {
 	return ""
 }
 
-proc urltitle::geturl {url server chan redirect_count} {
-	urltitle::log "geturl: Trying to get URL: $url"
-	if {$redirect_count > $urltitle::max_redirects} {
+proc ::urltitle::geturl {url server chan redirect_count} {
+	::urltitle::log "geturl: Trying to get URL: $url"
+	if {$redirect_count > $::urltitle::max_redirects} {
 		return
 	}
-	http::config -useragent $urltitle::useragent
-	set token [http::geturl $url \
+
+	::http::config -useragent $urltitle::useragent
+
+	# I encountered a bug with Irssi closing connection when we retrieve
+	# certain urls here.
+	# I tracked it through like this:
+	# - I confirmed the connection got lost even before we hit the ::http::reset
+	#   call. It is happening before that point.
+	# I have discovered through reading network-openssl.c in Irssi that
+	# SSL_read() is called and the error checking is not safe for async
+	# calls. basically what is happening as far as I can tell is this:
+	# 1. SSL_read() - get the message/line with URL
+	# 2. here we kick off TLS connection - global error queue gets modified
+	# 3. SSL_read() - and error checking here looks at the global error
+	#    queue which is unrelated to it.
+	# 4. Irssi thinks its connection is erroring out and shuts it down
+	# From the openssl docs on SSL_get_error() (used when SSL_read() returns
+	# <= 0):
+	# In addition to ssl and ret, SSL_get_error() inspects the current thread's OpenSSL error queue. Thus, SSL_get_error() must be used in the same thread that performed the TLS/SSL I/O operation, and no other OpenSSL function calls should appear in between. The current thread's error queue must be empty before the TLS/SSL I/O operation is attempted, or SSL_get_error() will not work reliably.
+	# its error checking (SSL_read() is returning -1) is returning
+	# the SYSCALL error message but it is not reliable
+	#
+	# my solution is to make calls synchronous for now... with the idea
+	# that we will not then have two different SSL I/O operations done
+	# in varying orders.
+
+	set token [http::geturl \
+		$url \
+		-binary 1 \
+		-timeout 10000 \
+	]
+	::urltitle::http_done $server $chan $redirect_count $token
+
+	# below is the async method I used previously
+	return
+
+	set token [http::geturl \
+		$url \
 		-binary 1 \
 		-blocksize $urltitle::max_bytes \
 		-timeout 10000 \
-		-progress urltitle::http_progress \
-		-command "urltitle::http_done $server $chan $redirect_count"]
+		-progress ::urltitle::http_progress \
+		-command "::urltitle::http_done $server $chan $redirect_count"\
+	]
 }
 
 # stop after max_bytes
-proc urltitle::http_progress {token total current} {
+proc ::urltitle::http_progress {token total current} {
 	if {$current >= $urltitle::max_bytes} {
-		http::reset $token
+		::urltitle::log "http_done: resetting, too large"
+		::http::reset $token
 	}
 }
 
-proc urltitle::http_done {server chan redirect_count token} {
+proc ::urltitle::http_done {server chan redirect_count token} {
 	# Get state array out of token
 	upvar #0 $token state
+
+	if {$state(status) == "reset"} {
+		::urltitle::log "http_done: request reset"
+		#::http::cleanup $token
+		#return
+	}
+
 	# Get the URL out of the state array. We could pass it via the
 	# callback but issues with variable substitution if URL contains what
 	# appears to be variables?
