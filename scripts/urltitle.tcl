@@ -114,40 +114,7 @@ proc ::urltitle::geturl {url server chan redirect_count} {
 
 	::http::config -useragent $urltitle::useragent
 
-	# I encountered a bug with Irssi closing connection when we retrieve
-	# certain urls here.
-	# I tracked it through like this:
-	# - I confirmed the connection got lost even before we hit the ::http::reset
-	#   call. It is happening before that point.
-	# I have discovered through reading network-openssl.c in Irssi that
-	# SSL_read() is called and the error checking is not safe for async
-	# calls. basically what is happening as far as I can tell is this:
-	# 1. SSL_read() - get the message/line with URL
-	# 2. here we kick off TLS connection - global error queue gets modified
-	# 3. SSL_read() - and error checking here looks at the global error
-	#    queue which is unrelated to it.
-	# 4. Irssi thinks its connection is erroring out and shuts it down
-	# From the openssl docs on SSL_get_error() (used when SSL_read() returns
-	# <= 0):
-	# In addition to ssl and ret, SSL_get_error() inspects the current thread's OpenSSL error queue. Thus, SSL_get_error() must be used in the same thread that performed the TLS/SSL I/O operation, and no other OpenSSL function calls should appear in between. The current thread's error queue must be empty before the TLS/SSL I/O operation is attempted, or SSL_get_error() will not work reliably.
-	# its error checking (SSL_read() is returning -1) is returning
-	# the SYSCALL error message but it is not reliable
-	#
-	# my solution is to make calls synchronous for now... with the idea
-	# that we will not then have two different SSL I/O operations done
-	# in varying orders.
-
-	set token [http::geturl \
-		$url \
-		-binary 1 \
-		-timeout 10000 \
-	]
-	::urltitle::http_done $server $chan $redirect_count $token
-
-	# below is the async method I used previously
-	return
-
-	set token [http::geturl \
+	set token [::http::geturl \
 		$url \
 		-binary 1 \
 		-blocksize $urltitle::max_bytes \
