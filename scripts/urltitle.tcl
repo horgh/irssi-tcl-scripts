@@ -15,7 +15,7 @@ package require tls
 package require htmlparse
 package require idna
 
-namespace eval urltitle {
+namespace eval ::urltitle {
 	variable useragent "Tcl http client package 2.7.5"
 	variable max_bytes 32768
 	variable max_redirects 3
@@ -23,21 +23,21 @@ namespace eval urltitle {
 	settings_add_str "urltitle_enabled_channels" ""
 	settings_add_str "urltitle_ignored_nicks" ""
 
-	signal_add msg_pub "*" urltitle::urltitle
+	signal_add msg_pub "*" ::urltitle::urltitle
 
 	::http::register https 443 [list ::tls::socket -ssl2 0 -ssl3 0 -tls1 1]
 
 	variable debug 0
 }
 
-proc urltitle::log {msg} {
-	if {!$urltitle::debug} {
+proc ::urltitle::log {msg} {
+	if {!$::urltitle::debug} {
 		return
 	}
 	irssi_print "urltitle: $msg"
 }
 
-proc urltitle::urltitle {server nick uhost chan msg} {
+proc ::urltitle::urltitle {server nick uhost chan msg} {
 	if {![str_in_settings_str urltitle_enabled_channels $chan]} {
 		return
 	}
@@ -46,19 +46,19 @@ proc urltitle::urltitle {server nick uhost chan msg} {
 		return
 	}
 
-	set url [urltitle::recognise_url $msg]
+	set url [::urltitle::recognise_url $msg]
 	if {$url == ""} {
 		return
 	}
 
-	urltitle::geturl $url $server $chan 0
+	::urltitle::geturl $url $server $chan 0
 }
 
 # Breaks an absolute URL into 3 pieces:
 # prefix/protocol: e.g. http://, https//
 # domain: e.g. everything up to the first /, if it exists
 # rest: everything after the first /, if exists
-proc urltitle::split_url {absolute_url} {
+proc ::urltitle::split_url {absolute_url} {
 	if {![regexp -- {(https?://)([^/]*)/?(.*)} $absolute_url -> prefix domain rest]} {
 		error "urltitle error: parse problem: $absolute_url"
 	}
@@ -74,7 +74,7 @@ proc urltitle::split_url {absolute_url} {
 
 # Attempt to recognise potential_url as an actual url in form of http[s]://...
 # Returns blank if unsuccessful
-proc urltitle::recognise_url {potential_url} {
+proc ::urltitle::recognise_url {potential_url} {
 	set full_url []
 	if {[regexp -nocase -- {(https?://\S+)} $potential_url -> url]} {
 		set full_url $url
@@ -86,7 +86,7 @@ proc urltitle::recognise_url {potential_url} {
 		return ""
 	}
 
-	lassign [urltitle::split_url $full_url] prefix domain rest
+	lassign [::urltitle::split_url $full_url] prefix domain rest
 
 	return "${prefix}${domain}/${rest}"
 }
@@ -99,7 +99,7 @@ proc urltitle::recognise_url {potential_url} {
 proc ::urltitle::extract_title {data} {
 	if {[regexp -nocase -- {<title>(.*?)</title>} $data -> title]} {
 		set title [regsub -all -- {\s+} $title " "]
-		urltitle::log "extract_title: found raw title $title"
+		::urltitle::log "extract_title: found raw title $title"
 		# mapEscapes decodes html encoded characters
 		return [htmlparse::mapEscapes $title]
 	}
@@ -112,7 +112,7 @@ proc ::urltitle::geturl {url server chan redirect_count} {
 		return
 	}
 
-	::http::config -useragent $urltitle::useragent
+	::http::config -useragent $::urltitle::useragent
 
 	# Provide an Accept text/html header as we are expecting to pull the HTML
 	# title tag out for printing.
@@ -124,7 +124,7 @@ proc ::urltitle::geturl {url server chan redirect_count} {
 	if {[catch {::http::geturl \
 		$url \
 		-binary 1 \
-		-blocksize $urltitle::max_bytes \
+		-blocksize $::urltitle::max_bytes \
 		-timeout 10000 \
 		-headers [list Accept text/html] \
 		-progress ::urltitle::http_progress \
@@ -136,7 +136,7 @@ proc ::urltitle::geturl {url server chan redirect_count} {
 
 # stop after max_bytes
 proc ::urltitle::http_progress {token total current} {
-	if {$current >= $urltitle::max_bytes} {
+	if {$current >= $::urltitle::max_bytes} {
 		::urltitle::log "http_done: resetting, too large"
 		::http::reset $token
 	}
@@ -159,9 +159,9 @@ proc ::urltitle::http_done {server chan redirect_count token} {
 	set data [::http::data $token]
 	set code [::http::ncode $token]
 	set meta [::http::meta $token]
-	urltitle::log "http_done: trying to get charset"
-	set charset [urltitle::get_charset $token]
-	if {$urltitle::debug} {
+	::urltitle::log "http_done: trying to get charset"
+	set charset [::urltitle::get_charset $token]
+	if {$::urltitle::debug} {
 		#irssi_print "http_done: data ${data}"
 		irssi_print "http_done: code ${code}"
 		irssi_print "http_done: meta ${meta}"
@@ -172,14 +172,14 @@ proc ::urltitle::http_done {server chan redirect_count token} {
 	# Follow redirects for some 30* codes
 	if {[regexp -- {30[01237]} $code]} {
 		# we need a Location: header to follow.
-		set location [urltitle::dict_get_insensitive $meta Location]
+		set location [::urltitle::dict_get_insensitive $meta Location]
 		if {$location == ""} {
 			irssi_print "urltitle: http_done: redirect code $code found, but no location header"
 		  return
 	  }
 		# the location may not be an absolute URL
-		set new_url [urltitle::make_absolute_url $url $location]
-		urltitle::geturl $new_url $server $chan [incr redirect_count]
+		set new_url [::urltitle::make_absolute_url $url $location]
+		::urltitle::geturl $new_url $server $chan [incr redirect_count]
 		return
 	}
 
@@ -199,7 +199,7 @@ proc ::urltitle::http_done {server chan redirect_count token} {
 
 	set title [::urltitle::extract_title $filtered_data]
 	if {$title != ""} {
-		urltitle::log "http_done: title after extracting/decoding: $title"
+		::urltitle::log "http_done: title after extracting/decoding: $title"
 		set output [string trim $title]
 
 		# we do not need to encode to utf-8 - that gets taken care of
@@ -216,15 +216,15 @@ proc ::urltitle::http_done {server chan redirect_count token} {
 # new_target is the Location given by a redirect. This may be an absolute
 # url, or it may be relative
 # If it's relative, use old_url
-proc urltitle::make_absolute_url {old_url new_target} {
+proc ::urltitle::make_absolute_url {old_url new_target} {
 	# First check if we've been given an absolute URL
-	set absolute_url [urltitle::recognise_url $new_target]
+	set absolute_url [::urltitle::recognise_url $new_target]
 	if {$absolute_url != ""} {
 		return $absolute_url
 	}
 
 	# Otherwise it must be a relative URL
-	lassign [urltitle::split_url $old_url] prefix domain rest
+	lassign [::urltitle::split_url $old_url] prefix domain rest
 
 	# Take everything up to the last / from rest
 	if {[regexp -- {(\S+)/} $rest -> rest_prefix]} {
@@ -235,7 +235,7 @@ proc urltitle::make_absolute_url {old_url new_target} {
 		set new_url "${prefix}${domain}/${new_target}"
 	}
 
-	urltitle::log "make_absolute_url: prefix: $prefix domain $domain rest $rest old_url $old_url new_url $new_url"
+	::urltitle::log "make_absolute_url: prefix: $prefix domain $domain rest $rest old_url $old_url new_url $new_url"
 
 	return $new_url
 }
@@ -247,7 +247,7 @@ proc urltitle::make_absolute_url {old_url new_target} {
 #
 # retrieve a key from a dict where we do not care about the
 # case of the key.
-proc urltitle::dict_get_insensitive {d key} {
+proc ::urltitle::dict_get_insensitive {d key} {
 	set key [string tolower $key]
 
 	# retrieve all keys from the dict.
@@ -265,14 +265,14 @@ proc urltitle::dict_get_insensitive {d key} {
 # @return string charset. "" if not found.
 #
 # look for a charset in the Content-Type header.
-proc urltitle::get_charset_from_headers {token} {
-	urltitle::log "get_charset_from_headers: trying to get charset"
+proc ::urltitle::get_charset_from_headers {token} {
+	::urltitle::log "get_charset_from_headers: trying to get charset"
 	set meta [::http::meta $token]
 
 	# get the Content-Type value if it exists.
-	set content_type [urltitle::dict_get_insensitive $meta Content-Type]
+	set content_type [::urltitle::dict_get_insensitive $meta Content-Type]
 	if {$content_type == ""} {
-		urltitle::log "get_charset_from_headers: no content-type header"
+		::urltitle::log "get_charset_from_headers: no content-type header"
 		return ""
 	}
 
@@ -280,10 +280,10 @@ proc urltitle::get_charset_from_headers {token} {
 	set re {charset="?(.*?)"?;?}
 	set res [regexp -nocase -- $re $content_type m charset]
 	if {!$res} {
-		urltitle::log "get_charset_from_headers: no charset found"
+		::urltitle::log "get_charset_from_headers: no charset found"
 		return ""
 	}
-	urltitle::log "get_charset_from_headers: found charset: $charset"
+	::urltitle::log "get_charset_from_headers: found charset: $charset"
 	return $charset
 }
 
@@ -292,19 +292,19 @@ proc urltitle::get_charset_from_headers {token} {
 # @return string charset. "" if not found.
 #
 # look for a charset in the html <meta/> tag.
-proc urltitle::get_charset_from_body {token} {
-	urltitle::log "get_charset_from_body: trying to get charset"
+proc ::urltitle::get_charset_from_body {token} {
+	::urltitle::log "get_charset_from_body: trying to get charset"
 	set data [::http::data $token]
-	#urltitle::log "get_charset_from_body: body: $data"
+	#::urltitle::log "get_charset_from_body: body: $data"
 
 	set re {<meta[^>]+?charset=['\"]?([a-zA-Z\-_0-9]+)['\"]?.*?>}
 	set res [regexp -nocase -- $re $data m charset]
 	if {!$res} {
-		urltitle::log "get_charset_from_body: no charset found"
+		::urltitle::log "get_charset_from_body: no charset found"
 		return ""
 	}
 
-	urltitle::log "get_charset_from_body: found charset: $charset"
+	::urltitle::log "get_charset_from_body: found charset: $charset"
 	return $charset
 }
 
@@ -315,8 +315,8 @@ proc urltitle::get_charset_from_body {token} {
 # try translate the charset so as to be recognized as a tcl charset.
 # some may be specified by the result/document that are not an
 # exact match to tcl charset names.
-proc urltitle::translate_charset {charset} {
-	urltitle::log "translate_charset: got charset $charset"
+proc ::urltitle::translate_charset {charset} {
+	::urltitle::log "translate_charset: got charset $charset"
 	set charset [string tolower $charset]
 	# iso-8859-1 must be changed to iso8859-1
 	regsub -- {iso-} $charset iso charset
@@ -331,7 +331,7 @@ proc urltitle::translate_charset {charset} {
 	# ! Tcl: Error: unknown encoding "gbk"
 	# I think this encoding is not supported in Tcl at this time from what
 	# I can tell...
-	urltitle::log "translate_charset: have charset $charset after translate"
+	::urltitle::log "translate_charset: have charset $charset after translate"
 	return $charset
 }
 
@@ -342,25 +342,25 @@ proc urltitle::translate_charset {charset} {
 # try to get the charset of the requested document.
 # first try http headers, then meta in body.
 # fall back to iso8859-1 if we don't find one.
-proc urltitle::get_charset {token} {
+proc ::urltitle::get_charset {token} {
 	# the charset from the Content-Type meta-data value.
-	set charset [urltitle::get_charset_from_headers $token]
+	set charset [::urltitle::get_charset_from_headers $token]
 	if {$charset != ""} {
-		urltitle::log "get_charset: charset from headers: $charset. translating"
-		return [urltitle::translate_charset $charset]
+		::urltitle::log "get_charset: charset from headers: $charset. translating"
+		return [::urltitle::translate_charset $charset]
 	}
 
 	# no charset given in http header. try to get from the meta tag in the body.
-	set charset [urltitle::get_charset_from_body $token]
+	set charset [::urltitle::get_charset_from_body $token]
 	if {$charset != ""} {
-		urltitle::log "get_charset: charset from body: $charset. translating"
-		return [urltitle::translate_charset $charset]
+		::urltitle::log "get_charset: charset from body: $charset. translating"
+		return [::urltitle::translate_charset $charset]
 	}
 
 	# default to iso8859-1.
 	set charset iso8859-1
-	urltitle::log "get_charset: default charset $charset. translating."
-	return [urltitle::translate_charset $charset]
+	::urltitle::log "get_charset: default charset $charset. translating."
+	return [::urltitle::translate_charset $charset]
 }
 
 irssi_print "urltitle.tcl loaded"
