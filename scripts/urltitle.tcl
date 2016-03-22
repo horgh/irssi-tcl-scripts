@@ -119,15 +119,19 @@ proc ::urltitle::geturl {url server chan redirect_count} {
 	# I use -headers rather than http::config -accept as the latter is global and
 	# I would rather avoid changing global options.
 
-	set token [::http::geturl \
+	irssi_print "urltitle: Looking up $url"
+
+	if {[catch {::http::geturl \
 		$url \
 		-binary 1 \
 		-blocksize $urltitle::max_bytes \
 		-timeout 10000 \
 		-headers [list Accept text/html] \
 		-progress ::urltitle::http_progress \
-		-command "::urltitle::http_done $server $chan $redirect_count"\
-	]
+		-command "::urltitle::http_done $server $chan $redirect_count" \
+	} err]} {
+		irssi_print "urltitle: Unable to make HTTP request to \[$url\]: $err"
+	}
 }
 
 # stop after max_bytes
@@ -170,7 +174,7 @@ proc ::urltitle::http_done {server chan redirect_count token} {
 		# we need a Location: header to follow.
 		set location [urltitle::dict_get_insensitive $meta Location]
 		if {$location == ""} {
-			urltitle::log "http_done: redirect code $code found, but no location header"
+			irssi_print "urltitle: http_done: redirect code $code found, but no location header"
 		  return
 	  }
 		# the location may not be an absolute URL
@@ -203,6 +207,8 @@ proc ::urltitle::http_done {server chan redirect_count token} {
 		# in putchan_raw().
 
 		putchan $server $chan "\002$output"
+	} else {
+		irssi_print "urltitle: No title found."
 	}
 }
 
