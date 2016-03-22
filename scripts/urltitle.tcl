@@ -114,11 +114,17 @@ proc ::urltitle::geturl {url server chan redirect_count} {
 
 	::http::config -useragent $urltitle::useragent
 
+	# Provide an Accept text/html header as we are expecting to pull the HTML
+	# title tag out for printing.
+	# I use -headers rather than http::config -accept as the latter is global and
+	# I would rather avoid changing global options.
+
 	set token [::http::geturl \
 		$url \
 		-binary 1 \
 		-blocksize $urltitle::max_bytes \
 		-timeout 10000 \
+		-headers [list Accept text/html] \
 		-progress ::urltitle::http_progress \
 		-command "::urltitle::http_done $server $chan $redirect_count"\
 	]
@@ -146,9 +152,9 @@ proc ::urltitle::http_done {server chan redirect_count token} {
 	# callback but issues with variable substitution if URL contains what
 	# appears to be variables?
 	set url $state(url)
-	set data [http::data $token]
-	set code [http::ncode $token]
-	set meta [http::meta $token]
+	set data [::http::data $token]
+	set code [::http::ncode $token]
+	set meta [::http::meta $token]
 	urltitle::log "http_done: trying to get charset"
 	set charset [urltitle::get_charset $token]
 	if {$urltitle::debug} {
@@ -157,7 +163,7 @@ proc ::urltitle::http_done {server chan redirect_count token} {
 		irssi_print "http_done: meta ${meta}"
 		irssi_print "http_done: got charset: $charset"
 	}
-	http::cleanup $token
+	::http::cleanup $token
 
 	# Follow redirects for some 30* codes
 	if {[regexp -- {30[01237]} $code]} {
