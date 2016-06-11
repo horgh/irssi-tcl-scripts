@@ -107,6 +107,11 @@ proc ::weather::weather_pub_async {server nick uhost chan argv} {
 	append output [dict get $data temperature]
 	append output "°C"
 
+	append output " ("
+	append output [dict get $data temperature_fahrenheit]
+	append output "°F"
+	append output ")"
+
 	append output " \002Humidity\002: "
 	append output [dict get $data humidity]
 	append output "%"
@@ -180,6 +185,13 @@ proc ::weather::forecast_pub_async {server nick uhost chan argv} {
 		append output "/"
 		append output [dict get $forecast temperature_min]
 		append output "°C"
+
+		append output " ("
+		append output [dict get $forecast temperature_max_fahrenheit]
+		append output "/"
+		append output [dict get $forecast temperature_min_fahrenheit]
+		append output "°F"
+		append output ")"
 	}
 	putchan $server $chan $output
 }
@@ -212,9 +224,15 @@ proc ::weather::lookup_weather {query} {
 		return [dict create status ok data $weather]
 	}
 
-	# may be cached
 	set query [string tolower $query]
 	set query [string trim $query]
+
+	# US zip codes
+	if {[string is digit -strict $query]} {
+		set query "$query, us"
+	}
+
+	# may be cached
 	if {[dict exists $::weather::weather_cache $query]} {
 		set request_time [dict get $::weather::weather_cache $query request_time]
 		set current_time [clock seconds]
@@ -263,9 +281,15 @@ proc ::weather::lookup_forecast {query} {
 		return [dict create status ok data $weather]
 	}
 
-	# may be cached
 	set query [string tolower $query]
 	set query [string trim $query]
+
+	# US zip codes
+	if {[string is digit -strict $query]} {
+		set query "$query, us"
+	}
+
+	# May be cached
 	if {[dict exists $::weather::forecast_cache $query]} {
 		set request_time [dict get $::weather::forecast_cache $query request_time]
 		set current_time [clock seconds]
@@ -439,7 +463,10 @@ proc ::weather::parse_weather {data} {
 		::weather::log "parse_weather: missing temp"
 		return ""
 	}
-	dict set parsed temperature [dict get $decoded main temp]
+	set celsius [dict get $decoded main temp]
+	dict set parsed temperature $celsius
+	set fahrenheit [::weather::celsius_to_fahrenheit $celsius]
+	dict set parsed temperature_fahrenheit $fahrenheit
 
 	# humidity %
 	if {![dict exists $decoded main humidity]} {
@@ -579,8 +606,14 @@ proc ::weather::parse_forecast {data} {
 			::weather::log "parse_forecast: missing list temp max"
 			return ""
 		}
-		dict set weather_parsed temperature_min [dict get $weather temp min]
-		dict set weather_parsed temperature_max [dict get $weather temp max]
+		set temp_min_celsius [dict get $weather temp min]
+		set temp_max_celsius [dict get $weather temp max]
+		dict set weather_parsed temperature_min $temp_min_celsius
+		dict set weather_parsed temperature_max $temp_max_celsius
+		set temp_min_fahrenheit [::weather::celsius_to_fahrenheit $temp_min_celsius]
+		set temp_max_fahrenheit [::weather::celsius_to_fahrenheit $temp_max_celsius]
+		dict set weather_parsed temperature_min_fahrenheit $temp_min_fahrenheit
+		dict set weather_parsed temperature_max_fahrenheit $temp_max_fahrenheit
 
 		# weather main
 		if {![dict exists $weather weather]} {
@@ -610,6 +643,11 @@ proc ::weather::parse_forecast {data} {
 	}
 
 	return $parsed
+}
+
+proc ::weather::celsius_to_fahrenheit {celsius} {
+	set fahrenheit [expr $celsius*9.0/5.0+32.0]
+	return [::weather::format_decimal $fahrenheit]
 }
 
 proc ::weather::format_decimal {number} {
