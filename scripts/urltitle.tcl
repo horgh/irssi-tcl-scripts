@@ -17,7 +17,11 @@ package require idna
 
 namespace eval ::urltitle {
 	variable useragent "Tcl http client package 2.7"
-	variable max_bytes 32768
+
+	# 2 MiB.
+	# If we hit this (or near it), then we cannot retrieve a title.
+	variable max_bytes [expr 2*1024*1024]
+
 	variable max_redirects 3
 
 	settings_add_str "urltitle_enabled_channels" ""
@@ -134,10 +138,15 @@ proc ::urltitle::geturl {url server chan redirect_count} {
 	}
 }
 
-# stop after max_bytes
+# This function will cause us to stop the request after max_bytes.
+# We are apparently not able to use the portion of data we've retrieved. The
+# data is garbage in my testing. The documentation is unclear.
 proc ::urltitle::http_progress {token total current} {
 	if {$current >= $::urltitle::max_bytes} {
 		::urltitle::log "http_done: resetting, too large"
+
+		# Don't clean up the token here. We will in http_done.
+
 		::http::reset $token
 	}
 }
@@ -146,48 +155,65 @@ proc ::urltitle::http_done {server chan redirect_count token} {
 	# Get state array out of token
 	upvar #0 $token state
 
-	set status $state(status)
-	::urltitle::log "http_done: status $status"
-
-	# Reset happens if we fetch too much and stop the request. It's okay to
-	# continue.
-	if {$status == "reset"} {
-		::urltitle::log "http_done: request reset"
+	# Ensure we have a sane state.
+	if {$state(status) != "ok"} {
+		set status $state(status)
+		::urltitle::log "http_done: request status is $status, not ok"
+		# It appears that status reset is not okay to use the result after all.
+		::http::cleanup $token
+		return
 	}
 
-	set size $state(currentsize)
-	::urltitle::log "http_done: Fetched $size bytes"
-
-	# Get the URL out of the state array. We could pass it via the
-	# callback but issues with variable substitution if URL contains what
-	# appears to be variables?
-	set url $state(url)
-	set data [::http::data $token]
-	set code [::http::ncode $token]
-	set meta [::http::meta $token]
-	::urltitle::log "http_done: trying to get charset"
-	set charset [::urltitle::get_charset $token]
 	if {$::urltitle::debug} {
+		set url $state(url)
+		set data [::http::data $token]
+		set code [::http::ncode $token]
+		set meta [::http::meta $token]
+		::urltitle::log "http_done: trying to get charset"
+		set charset [::urltitle::get_charset $token]
 		#irssi_print "http_done: data ${data}"
 		irssi_print "http_done: code ${code}"
 		irssi_print "http_done: meta ${meta}"
 		irssi_print "http_done: got charset: $charset"
 	}
-	::http::cleanup $token
 
 	# Follow redirects for some 30* codes
+	set code [::http::ncode $token]
 	if {[regexp -- {30[01237]} $code]} {
-		# we need a Location: header to follow.
+		# We need a Location: header to follow.
+		set meta [::http::meta $token]
 		set location [::urltitle::dict_get_insensitive $meta Location]
 		if {$location == ""} {
-			irssi_print "urltitle: http_done: redirect code $code found, but no location header"
-		  return
-	  }
-		# the location may not be an absolute URL
+			irssi_print "http_done: redirect code $code found, but no location header"
+			::http::cleanup $token
+			return
+		}
+
+		# The location may not be an absolute URL. Make it one.
+
+		# Get the URL out of the state array. We could pass it via the callback but
+		# issues with variable substitution if URL contains what appears to be
+		# variables?
+		set url $state(url)
+
 		set new_url [::urltitle::make_absolute_url $url $location]
+
+		::http::cleanup $token
 		::urltitle::geturl $new_url $server $chan [incr redirect_count]
 		return
 	}
+
+	::urltitle::parse_and_show_title $server $chan $token
+	::http::cleanup $token
+}
+
+# Take a completed request token and try to extract a title from it.
+# No more HTTP requests will be made.
+# If we find a title, we write it to the channel.
+proc ::urltitle::parse_and_show_title {server chan token} {
+	set data [::http::data $token]
+	set charset [::urltitle::get_charset $token]
+	::http::cleanup $token
 
 	# convert the data to unicode (internal) from its encoding.
 	set data [encoding convertfrom $charset $data]
