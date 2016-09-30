@@ -132,10 +132,12 @@ proc ::urltitle::geturl {url server chan redirect_count} {
 		-timeout 10000 \
 		-headers [list Accept text/html] \
 		-progress ::urltitle::http_progress \
-		-command "::urltitle::http_done $server $chan $redirect_count" \
-	} err]} {
-		irssi_print "urltitle: Unable to make HTTP request to \[$url\]: $err"
+		} token]} {
+		irssi_print "urltitle: Unable to make HTTP request to \[$url\]: $token"
+		return
 	}
+
+	::urltitle::http_done $server $chan $redirect_count $token
 }
 
 # This function will cause us to stop the request after max_bytes.
@@ -143,7 +145,7 @@ proc ::urltitle::geturl {url server chan redirect_count} {
 # data is garbage in my testing. The documentation is unclear.
 proc ::urltitle::http_progress {token total current} {
 	if {$current >= $::urltitle::max_bytes} {
-		::urltitle::log "http_done: resetting, too large"
+		::urltitle::log "http_progress: resetting, too large"
 
 		# Don't clean up the token here. We will in http_done.
 
