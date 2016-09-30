@@ -16,7 +16,7 @@ package require htmlparse
 package require idna
 
 namespace eval ::urltitle {
-	variable useragent "Tcl http client package 2.7.5"
+	variable useragent "Tcl http client package 2.7"
 	variable max_bytes 32768
 	variable max_redirects 3
 
@@ -146,11 +146,17 @@ proc ::urltitle::http_done {server chan redirect_count token} {
 	# Get state array out of token
 	upvar #0 $token state
 
-	if {$state(status) == "reset"} {
+	set status $state(status)
+	::urltitle::log "http_done: status $status"
+
+	# Reset happens if we fetch too much and stop the request. It's okay to
+	# continue.
+	if {$status == "reset"} {
 		::urltitle::log "http_done: request reset"
-		#::http::cleanup $token
-		#return
 	}
+
+	set size $state(currentsize)
+	::urltitle::log "http_done: Fetched $size bytes"
 
 	# Get the URL out of the state array. We could pass it via the
 	# callback but issues with variable substitution if URL contains what
