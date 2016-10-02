@@ -29,8 +29,6 @@ namespace eval ::urltitle {
 
 	signal_add msg_pub "*" ::urltitle::urltitle
 
-	::http::register https 443 [list ::tls::socket -ssl2 0 -ssl3 0 -tls1 1]
-
 	variable debug 0
 }
 
@@ -56,6 +54,10 @@ proc ::urltitle::urltitle {server nick uhost chan msg} {
 	}
 
 	::urltitle::geturl $url $server $chan 0
+
+	# geturl changes the https protocol for SNI. Reset it back for other scripts
+	# in this interpreter.
+	::http::register https 443 [list ::tls::socket -ssl2 0 -ssl3 0 -tls1 1]
 }
 
 # Breaks an absolute URL into 3 pieces:
@@ -115,6 +117,11 @@ proc ::urltitle::geturl {url server chan redirect_count} {
 	if {$redirect_count > $::urltitle::max_redirects} {
 		return
 	}
+
+	# Use TLS SNI (-servername). We need the hostname.
+	# For this we need tcl-tls 1.6.4+
+	lassign [::urltitle::split_url $url] prefix hostname rest
+	::http::register https 443 [list ::tls::socket -ssl2 0 -ssl3 0 -tls1 1 -servername $hostname]
 
 	::http::config -useragent $::urltitle::useragent
 
