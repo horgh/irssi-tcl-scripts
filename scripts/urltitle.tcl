@@ -115,6 +115,7 @@ proc ::urltitle::extract_title {data} {
 proc ::urltitle::geturl {url server chan redirect_count} {
 	::urltitle::log "geturl: Trying to get URL: $url"
 	if {$redirect_count > $::urltitle::max_redirects} {
+		irssi_print "urltitle: Too many redirects ($redirect_count). Not fetching $url"
 		return
 	}
 
@@ -130,7 +131,7 @@ proc ::urltitle::geturl {url server chan redirect_count} {
 	# I use -headers rather than http::config -accept as the latter is global and
 	# I would rather avoid changing global options.
 
-	irssi_print "urltitle: Looking up $url"
+	irssi_print "urltitle: Fetching $url"
 
 	if {[catch {::http::geturl \
 		$url \
