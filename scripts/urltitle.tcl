@@ -254,32 +254,58 @@ proc ::urltitle::parse_and_show_title {server chan token} {
 	}
 }
 
+# We've been redirected. Figure out where to go.
+#
+# Take the current URL and the Location header, and determine the full URL to
+# go to next.
+#
 # Ensure we return an absolute URL
+#
 # new_target is the Location given by a redirect. This may be an absolute
-# url, or it may be relative
-# If it's relative, use old_url
+# URL including protocol and host, or it may be relative to the host.
+#
+# If it's relative, we use old_url to create an absolute URL.
 proc ::urltitle::make_absolute_url {old_url new_target} {
-	# First check if we've been given an absolute URL
+	# First check if we've been given an absolute URL (including host) as the
+	# target.
 	set absolute_url [::urltitle::recognise_url $new_target]
 	if {$absolute_url != ""} {
 		return $absolute_url
 	}
 
-	# Otherwise it must be a relative URL
-	lassign [::urltitle::split_url $old_url] prefix domain rest
+	# The target is relative to the host. We need to create an absolute URL.
 
-	# Take everything up to the last / from rest
-	if {[regexp -- {(\S+)/} $rest -> rest_prefix]} {
-		set new_url "${prefix}${domain}/${rest_prefix}/${new_target}"
-
-	# Otherwise there was no / in rest, so at top level
-	} else {
-		set new_url "${prefix}${domain}/${new_target}"
+	if {[string length $new_target] == 0} {
+		error "make_absolute_url: Location is blank"
 	}
 
-	::urltitle::log "make_absolute_url: prefix: $prefix domain $domain rest $rest old_url $old_url new_url $new_url"
+	# Break up the old URL into useful pieces.
+	lassign [::urltitle::split_url $old_url] prefix domain old_path
 
-	return $new_url
+	# If the first character of the target is /, then append it to the
+	# domain/host, and we're done.
+	if {[string index $new_target 0] == "/"} {
+		return [format "%s%s%s" $prefix $domain $new_target]
+	}
+
+	# It's relative to the current "directory" on the host.
+
+	# Find what that directory is.
+
+	# If old URL was https://url, then return https://url/new_target
+	if {$old_path == ""} {
+		return [format "%s%s/%s" $prefix $domain $new_target]
+	}
+
+	# If old URL was https://url/blah/, then return https://url/blah/new_target
+	if {[regexp -- {(\S+)/} $old_path -> old_dir]} {
+		return [format "%s%s/%s/%s" $prefix $domain $old_dir $new_target]
+	}
+
+	# No / in the old path.
+
+	# If old URL was https://url/blah, then return https://url/new_target
+	return [format "%s%s/%s" $prefix $domain $new_target]
 }
 
 # @param dict $d A dict which from ::http::meta
