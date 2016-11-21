@@ -77,6 +77,16 @@ proc ::test_make_absolute_url {} {
 			location buttonup \
 			expected https://leviathan.summercat.com/one/two/buttonup \
 			] \
+		[dict create \
+			old_url https://leviathan.summercat.com \
+			location / \
+			expected https://leviathan.summercat.com/ \
+			] \
+		[dict create \
+			old_url https://leviathan.summercat.com/hi \
+			location / \
+			expected https://leviathan.summercat.com/ \
+			] \
 	]
 
 	set failed 0
