@@ -1,23 +1,15 @@
-#
-# 2013-02-26
-# will@summercat.com
-#
-# retrieve and output some markets data from bitcoincharts.com.
+# Retrieve and output some markets data from bitcoincharts.com.
 #
 # http://bitcoincharts.com/about/markets-api/
-#
 
 package require http
 package require json
-# for debugging purposes I host a json dump on a separate server which
-# is ssl only, hence this!
-package require tls
 
 namespace eval ::bitcoincharts {
-	# url to query.
 	variable url {http://api.bitcoincharts.com/v1/markets.json}
 
-	# symbols we output. we group them by currency.
+	# symbols we output. we group them by currency since we output about a single
+	# currency at a time.
 	variable symbols [dict create \
 		usd [list btceUSD bitstampUSD] \
 		cad [list virtexCAD mtgoxCAD] \
@@ -45,8 +37,6 @@ namespace eval ::bitcoincharts {
 	signal_add msg_pub .btc ::bitcoincharts::btc_handler
 
 	settings_add_str "bitcoincharts_enabled_channels" ""
-
-	::http::register https 443 [list ::tls::socket -ssl2 0 -ssl3 0 -tls1 1]
 }
 
 proc ::bitcoincharts::::log {msg} {
