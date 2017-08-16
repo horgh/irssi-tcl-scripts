@@ -88,7 +88,7 @@ proc ::bitcoincharts::format_double_thousands {v} {
 	# groups of 3.
 	set digit_groups [list]
 	while {[llength $whole_part_digits]} {
-		if {[expr [llength $whole_part_digits] >= 3]} {
+		if {[llength $whole_part_digits] >= 3} {
 			set digit_group [lrange $whole_part_digits 0 2]
 			set whole_part_digits [lreplace $whole_part_digits 0 2]
 		} else {
@@ -238,7 +238,7 @@ proc ::bitcoincharts::get_market_data {server chan currency} {
 	set delay_seconds [expr $::bitcoincharts::query_delay * 60]
 	set next_query_time [expr $::bitcoincharts::last_query_time + $delay_seconds]
 	set current_time [clock seconds]
-	if {[expr $next_query_time > $current_time] } {
+	if {$next_query_time > $current_time} {
 		# we can't make another query yet, so try to use our cache.
 		::bitcoincharts::log "get_market_data: cannot make a new request yet"
 		# we may not have a valid cached result - for instance if the last
@@ -271,12 +271,13 @@ proc ::bitcoincharts::btc_handler {server nick uhost chan argv} {
 	# we may be given a currency as an argument.
 	set argv [string trim $argv]
 	set argv [string tolower $argv]
-	if {[expr [string length $argv] > 0]} {
+	if {$argv != ""} {
 		if {![dict exists $::bitcoincharts::symbols $argv]} {
 			set currencies [dict keys $::bitcoincharts::symbols]
 			putchan $server $chan "Valid currencies are: $currencies"
 			return
 		}
+
 		set currency $argv
 	}
 
