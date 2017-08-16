@@ -57,7 +57,7 @@ proc ::bitcoincharts::format_double {v} {
 	if {$v == "null" || $v == ""} {
 		set v 0
 	}
-	set v [format %.5f $v]
+	set v [format %.2f $v]
 	return $v
 }
 
@@ -142,13 +142,13 @@ proc ::bitcoincharts::output_market_data {server chan data currency} {
 		# format the values a bit.
 		set latest_trade [clock format $latest_trade]
 
-		set high            [::bitcoincharts::format_double $high]
-		set bid             [::bitcoincharts::format_double $bid]
-		set currency_volume [::bitcoincharts::format_double $currency_volume]
-		set ask             [::bitcoincharts::format_double $ask]
-		set close           [::bitcoincharts::format_double $close]
-		set avg             [::bitcoincharts::format_double $avg]
-		set low             [::bitcoincharts::format_double $low]
+		set high            [::bitcoincharts::format_double_thousands $high]
+		set bid             [::bitcoincharts::format_double_thousands $bid]
+		set currency_volume [::bitcoincharts::format_double_thousands $currency_volume]
+		set ask             [::bitcoincharts::format_double_thousands $ask]
+		set close           [::bitcoincharts::format_double_thousands $close]
+		set avg             [::bitcoincharts::format_double_thousands $avg]
+		set low             [::bitcoincharts::format_double_thousands $low]
 
 		set volume [::bitcoincharts::format_double_thousands $volume]
 
