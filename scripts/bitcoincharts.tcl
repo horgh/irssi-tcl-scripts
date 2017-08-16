@@ -11,9 +11,11 @@ namespace eval ::bitcoincharts {
 	# symbols we output. we group them by currency since we output about a single
 	# currency at a time.
 	variable symbols [dict create \
-		usd [list btceUSD bitstampUSD] \
-		cad [list virtexCAD mtgoxCAD] \
-		eur [list mtgoxEUR btceEUR] \
+		usd [list coinbaseUSD bitstampUSD krakenUSD] \
+		cad [list krakenCAD] \
+		eur [list krakenEUR] \
+		jpy [list coincheckJPY bitflyerJPY] \
+		cny [list btcnCNY] \
 	]
 
 	# amount of time to wait between queries. minutes.
