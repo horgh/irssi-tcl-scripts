@@ -36,7 +36,7 @@ namespace eval ::ud {
 	variable definitions_per_page 7
 
 	# the maximum number of HTTP requests to make during one one lookup.
-	variable max_requests 2
+	variable max_requests 3
 
 	# http request timeout.
 	variable request_timeout_seconds 10
@@ -113,6 +113,7 @@ proc ::ud::fetch {server channel url query number request_count} {
 	# we only make a defined number of requests (following redirects).
 	if {$request_count >= $::ud::max_requests} {
 		::ud::log "fetch: maximum requests made"
+		putchan $server $channel "Too many redirects! Not requesting $url"
 		return
 	}
 
