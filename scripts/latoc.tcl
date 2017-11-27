@@ -1,5 +1,7 @@
 # Provides binds to read Yahoo.com futures
-
+#
+# If you update this, update the one in
+# https://github.com/horgh/eggdrop-scripts.
 package require http
 
 namespace eval ::latoc {
@@ -17,7 +19,7 @@ namespace eval ::latoc {
 	settings_add_str "latoc_enabled_channels" ""
 }
 
-proc ::latoc::fetch {} {
+proc ::latoc::fetch {server chan} {
 	::http::config -useragent $::latoc::user_agent
 	set token [::http::geturl $::latoc::url -timeout 20000]
 
@@ -72,7 +74,7 @@ proc ::latoc::output {server chan lines symbol_pattern} {
 proc ::latoc::oil_handler {server nick uhost chan argv} {
 	if {![str_in_settings_str "latoc_enabled_channels" $chan]} { return }
 
-	set data [::latoc::fetch]
+	set data [::latoc::fetch $server $chan]
 	set lines [::latoc::parse $data]
 	::latoc::output $server $chan $lines {Crude Oil}
 }
@@ -80,7 +82,7 @@ proc ::latoc::oil_handler {server nick uhost chan argv} {
 proc ::latoc::gold_handler {server nick uhost chan argv} {
 	if {![str_in_settings_str "latoc_enabled_channels" $chan]} { return }
 
-	set data [::latoc::fetch]
+	set data [::latoc::fetch $server $chan]
 	set lines [::latoc::parse $data]
 	::latoc::output $server $chan $lines {Gold}
 }
@@ -88,7 +90,7 @@ proc ::latoc::gold_handler {server nick uhost chan argv} {
 proc ::latoc::silver_handler {server nick uhost chan argv} {
 	if {![str_in_settings_str "latoc_enabled_channels" $chan]} { return }
 
-	set data [::latoc::fetch]
+	set data [::latoc::fetch $server $chan]
 	set lines [::latoc::parse $data]
 	::latoc::output $server $chan $lines {Silver}
 }
