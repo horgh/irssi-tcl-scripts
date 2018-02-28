@@ -25,10 +25,10 @@ namespace eval ::ud {
 	# url to send look up requests to.
 	variable url {https://www.urbandictionary.com/define.php}
 
-	# regex to find all definition(s).
-	variable list_regex {<div class='def-panel' data-defid='[0-9]+?'>.*?<div class='def-footer'>}
+	# regex to find all definitions.
+	variable list_regex {<div class="def-panel" data-defid="[0-9]+?">.*?<div class="def-footer">}
 	# regex to parse a single definition.
-	variable def_regex  {<div class='def-panel' data-defid='([0-9]+?)'>.*?<div class='meaning'>(.*?)</div>.*?<div class='example'>(.*?)</div>}
+	variable def_regex  {<div class="def-panel" data-defid="([0-9]+?)">.*?<div class="meaning">(.*?)</div>.*?<div class="example">(.*?)</div>}
 
 	# the number of definitions per page.
 	variable definitions_per_page 7
