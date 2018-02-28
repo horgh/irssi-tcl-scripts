@@ -215,6 +215,11 @@ proc ::ud::http_follow_redirect {server channel query number request_count meta}
 		::ud::log "http_follow_redirect: Location is not absolute: $location"
 		return
 	}
+
+	# We lose page parameter apparently.
+	lassign [::ud::find_term_by_page $number] page
+	append location &page=$page
+
 	::ud::fetch $server $channel $location $query $number $request_count
 }
 
