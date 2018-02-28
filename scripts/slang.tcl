@@ -274,14 +274,14 @@ proc ::ud::sanitise_text {s} {
 }
 
 proc ::ud::parse {query raw_definition} {
-	if {![regexp $::ud::def_regex $raw_definition -> number definition example]} {
+	if {![regexp $::ud::def_regex $raw_definition -> id definition example]} {
 		error "Could not parse the definition."
 	}
 	set definition [::ud::sanitise_text $definition]
 	set example [::ud::sanitise_text $example]
 
 	set d [dict create]
-	dict set d number $number
+	dict set d id $id
 	dict set d definition "$query is $definition"
 	dict set d example $example
 
@@ -289,7 +289,7 @@ proc ::ud::parse {query raw_definition} {
 }
 
 proc ::ud::def_url {query result} {
-	set raw_url ${::ud::url}?[::http::formatQuery term $query defid [dict get $result number]]
+	set raw_url ${::ud::url}?[::http::formatQuery term $query defid [dict get $result id]]
 	return $raw_url
 }
 
