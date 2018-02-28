@@ -40,7 +40,7 @@ namespace eval ::ud {
 	variable request_timeout_seconds 10
 
 	# Whether to enable debug mode or not.
-	variable debug 1
+	variable debug 0
 
 	settings_add_str "slang_enabled_channels" ""
 
