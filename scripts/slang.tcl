@@ -23,7 +23,7 @@ namespace eval ::ud {
 	variable client "Mozilla/5.0 (compatible; Y!J; for robot study; keyoshid)"
 
 	# url to send look up requests to.
-	variable url {http://www.urbandictionary.com/define.php}
+	variable url {https://www.urbandictionary.com/define.php}
 
 	# regex to find all definition(s).
 	variable list_regex {<div class='def-panel' data-defid='[0-9]+?'>.*?<div class='def-footer'>}
