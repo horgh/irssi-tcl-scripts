@@ -39,7 +39,9 @@ namespace eval ::ud {
 	# http request timeout.
 	variable request_timeout_seconds 10
 
-	# the irssi-tcl settings value.
+	# Whether to enable debug mode or not.
+	variable debug 1
+
 	settings_add_str "slang_enabled_channels" ""
 
 	signal_add msg_pub $::ud::trigger ::ud::handler
@@ -136,15 +138,19 @@ proc ::ud::fetch {server channel url query number request_count} {
 		set url ${::ud::url}?${http_query}
 	}
 
-	# timeout is in milliseconds.
 	set timeout [expr $::ud::request_timeout_seconds * 1000]
 	incr request_count
-	#::ud::log "fetch: starting request to $url"
-	# NOTE: to debug this it may help to temporarily change to a synchronous
-	#   request.
-	set token [::http::geturl $url \
+
+	if {$::ud::debug} {
+		::ud::log "fetch: Retrieving $url"
+		set token [::http::geturl $url -timeout $timeout]
+		::ud::fetch_cb $server $channel [list $query] $number $request_count $token
+		return
+	}
+
+	::http::geturl $url \
 		-timeout $timeout \
-		-command "::ud::fetch_cb $server $channel [list $query] $number $request_count"]
+		-command "::ud::fetch_cb $server $channel [list $query] $number $request_count"
 }
 
 # take the raw query response data and output it to the channel as necessary.
