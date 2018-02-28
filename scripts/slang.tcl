@@ -250,6 +250,12 @@ proc ::ud::fetch_cb {server channel query number request_count token} {
 		return
 	}
 
+	if {$::ud::debug} {
+		set fh [open /tmp/ud.txt w]
+		puts -nonewline $fh $data
+		close $fh
+	}
+
 	if {[catch {::ud::output $server $channel $query $number $data} msg]} {
 		putchan $server $channel "Output failure: $msg"
 		return
