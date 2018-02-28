@@ -1,6 +1,4 @@
-#
-# This script looks up definitions on urbandictionary.com.
-#
+# Look up definitions on urbandictionary.com.
 
 package require htmlparse
 package require http
@@ -44,7 +42,6 @@ namespace eval ::ud {
 	# the irssi-tcl settings value.
 	settings_add_str "slang_enabled_channels" ""
 
-	# add the signal listener.
 	signal_add msg_pub $::ud::trigger ::ud::handler
 }
 
@@ -283,7 +280,6 @@ proc ::ud::sanitise_text {s} {
 	return $s
 }
 
-#
 proc ::ud::parse {query raw_definition} {
 	if {![regexp $::ud::def_regex $raw_definition -> number definition example]} {
 		error "Could not parse the definition."
@@ -304,7 +300,6 @@ proc ::ud::def_url {query result} {
 	return $raw_url
 }
 
-# by fedex
 proc ::ud::split_line {max str} {
 	set last [expr {[string length $str] -1}]
 	set start 0
