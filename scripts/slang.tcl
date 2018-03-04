@@ -257,6 +257,11 @@ proc ::ud::fetch_cb {server channel query number request_count token} {
 		return
 	}
 
+	if {$ncode == 404} {
+		putchan $server $channel "No definitions found."
+		return
+	}
+
 	if {$ncode != 200} {
 		putchan $server $channel "HTTP request problem. HTTP code: $ncode."
 		return
