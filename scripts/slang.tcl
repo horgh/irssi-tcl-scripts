@@ -76,7 +76,11 @@ proc ::ud::handler {server nick uhost chan argv} {
 	}
 
 	lassign [::ud::find_term_by_page $number] page
-	set http_query [::http::formatQuery term $query page $page]
+	if {$page == 1} {
+		set http_query [::http::formatQuery term $query]
+	} else {
+		set http_query [::http::formatQuery term $query page $page]
+	}
 	set url ${::ud::url}?${http_query}
 
 	set request_count 0
