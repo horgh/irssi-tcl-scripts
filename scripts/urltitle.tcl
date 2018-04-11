@@ -103,7 +103,7 @@ proc ::urltitle::recognise_url {potential_url} {
 #
 # pull the title out of the html body of a page
 proc ::urltitle::extract_title {data} {
-	if {[regexp -nocase -- {<title>(.*?)</title>} $data -> title]} {
+	if {[regexp -nocase -- {<title(?:\s+[^>]*)?>(.*?)</title>} $data -> title]} {
 		set title [regsub -all -- {\s+} $title " "]
 		::urltitle::log "extract_title: found raw title $title"
 		# mapEscapes decodes html encoded characters

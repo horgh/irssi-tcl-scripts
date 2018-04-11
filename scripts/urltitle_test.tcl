@@ -1,6 +1,6 @@
+#!/usr/bin/env tclsh
 #
-# Automatic tests for urltitle.tcl.
-#
+# Unit tests for urltitle.tcl.
 
 # Dummy some irssi.tcl functions.
 proc ::settings_add_str {a b} {}
@@ -15,6 +15,9 @@ proc ::tests {} {
 
 	set success 1
 	if {![::test_make_absolute_url]} {
+		set success 0
+	}
+	if {![::test_extract_title]} {
 		set success 0
 	}
 
@@ -111,6 +114,35 @@ proc ::test_make_absolute_url {} {
 
 	if {$failed != 0} {
 		puts [format "make_absolute_url: %d/%d tests failed" $failed [llength $tests]]
+	}
+
+	return [expr $failed == 0]
+}
+
+proc ::test_extract_title {} {
+	set tests [list \
+		[dict create \
+			input  {<title>hi there</title>} \
+			output {hi there} \
+		] \
+		[dict create \
+			input  {<title data-react-helmet="true">hi there</title>} \
+			output {hi there} \
+		] \
+	]
+
+	set failed 0
+	foreach test $tests {
+		set output [::urltitle::extract_title [dict get $test input]]
+		if {$output == [dict get $test output]} {
+			continue
+		}
+		puts [format "extract_title %s = %s, wanted %s" [dict get $test input] $output [dict get $test output]]
+		incr failed
+	}
+
+	if {$failed != 0} {
+		puts [format "extract_title: %d/%d tests failed" $failed [llength $tests]]
 	}
 
 	return [expr $failed == 0]
