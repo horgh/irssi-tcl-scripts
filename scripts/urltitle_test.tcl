@@ -20,9 +20,9 @@ proc ::tests {} {
 
 	if {$success} {
 		puts "Tests completed. Success."
-	} else {
-		puts "Tests completed. Failures found!"
+		return
 	}
+	puts "Tests completed. Failures found!"
 }
 
 proc ::test_make_absolute_url {} {
