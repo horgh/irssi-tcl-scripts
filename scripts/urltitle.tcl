@@ -181,7 +181,9 @@ proc ::urltitle::http_done {server chan redirect_count token} {
 		set meta [::http::meta $token]
 		::urltitle::log "http_done: trying to get charset"
 		set charset [::urltitle::get_charset $token]
-		#irssi_print "http_done: data ${data}"
+		set fh [open /tmp/urltitle.out w]
+		puts -nonewline $fh $data
+		close $fh
 		irssi_print "http_done: code ${code}"
 		irssi_print "http_done: meta ${meta}"
 		irssi_print "http_done: got charset: $charset"
