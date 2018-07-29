@@ -5,7 +5,9 @@
 # Dummy some irssi.tcl functions.
 proc ::settings_add_str {a b} {}
 proc ::signal_add {a b c} {}
-proc ::irssi_print {a} {}
+proc ::irssi_print {a} {
+	puts "irssi_print: $a"
+}
 
 source idna.tcl
 source urltitle.tcl
@@ -122,18 +124,33 @@ proc ::test_make_absolute_url {} {
 proc ::test_extract_title {} {
 	set tests [list \
 		[dict create \
+			description {basic case} \
 			input  {<title>hi there</title>} \
 			output {hi there} \
 		] \
 		[dict create \
+			description {title with attributes} \
 			input  {<title data-react-helmet="true">hi there</title>} \
 			output {hi there} \
+		] \
+		[dict create \
+			description {very long document caused infinite loop in regex engine for many minutes} \
+			input_file test-data/url-title-long-regex-time.html \
+			output {Merck CEO Taunts Patients By Lowering Drug Prices Until Just Out Of Their Reach} \
 		] \
 	]
 
 	set failed 0
 	foreach test $tests {
-		set output [::urltitle::extract_title [dict get $test input]]
+		if {[dict exists $test input]} {
+			set input [dict get $test input]
+		} else {
+			set fh [open [dict get $test input_file]]
+			set input [read -nonewline $fh]
+			close $fh
+		}
+
+		set output [::urltitle::extract_title $input]
 		if {$output == [dict get $test output]} {
 			continue
 		}
