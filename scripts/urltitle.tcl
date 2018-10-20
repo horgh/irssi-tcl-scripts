@@ -103,8 +103,8 @@ proc ::urltitle::recognise_url {potential_url} {
 #
 # pull the title out of the html body of a page
 proc ::urltitle::extract_title {data} {
-	# Upper bound for {,x} is 255. So use two.
-	if {[regexp -nocase -- {<title(?:\s{1,100}[^>]{0,200})?>(.{1,255}?.{1,255}?)</title>} $data -> title]} {
+	# Upper bound for {,x} is 255.
+	if {[regexp -nocase -- {<title(?:\s{1,100}[^>]{0,200})?>([^<]{1,255}?[^<]{1,255}?)</title>} $data -> title]} {
 		set title [regsub -all -- {\s+} $title " "]
 		::urltitle::log "extract_title: found raw title $title"
 		# mapEscapes decodes html encoded characters

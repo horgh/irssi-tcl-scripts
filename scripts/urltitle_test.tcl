@@ -138,6 +138,11 @@ proc ::test_extract_title {} {
 			input_file test-data/url-title-long-regex-time.html \
 			output {Merck CEO Taunts Patients By Lowering Drug Prices Until Just Out Of Their Reach} \
 		] \
+		[dict create \
+			description {two title tags} \
+			input_file test-data/45262-the-kingkiller-chronicle \
+			output {The Kingkiller Chronicle Series by Patrick Rothfuss} \
+		] \
 	]
 
 	set failed 0
