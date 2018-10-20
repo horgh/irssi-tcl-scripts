@@ -107,6 +107,7 @@ proc ::urltitle::extract_title {data} {
 	if {[regexp -nocase -- {<title(?:\s{1,100}[^>]{0,200})?>([^<]{1,255}?[^<]{1,255}?)</title>} $data -> title]} {
 		set title [regsub -all -- {\s+} $title " "]
 		::urltitle::log "extract_title: found raw title $title"
+		set title [string trim $title]
 		# mapEscapes decodes html encoded characters
 		return [htmlparse::mapEscapes $title]
 	}
@@ -245,13 +246,12 @@ proc ::urltitle::parse_and_show_title {server chan token} {
 	set title [::urltitle::extract_title $filtered_data]
 	if {$title != ""} {
 		::urltitle::log "http_done: title after extracting/decoding: $title"
-		set output [string trim $title]
 
 		# we do not need to encode to utf-8 - that gets taken care of
 		# by functions other than us. in particular when we call Tcl_GetString()
 		# in putchan_raw().
 
-		putchan $server $chan "\002$output"
+		putchan $server $chan "\002$title"
 	} else {
 		irssi_print "urltitle: No title found."
 	}
