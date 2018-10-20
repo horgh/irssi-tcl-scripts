@@ -159,7 +159,7 @@ proc ::test_extract_title {} {
 		if {$output == [dict get $test output]} {
 			continue
 		}
-		puts [format "extract_title %s = %s, wanted %s" [dict get $test input] $output [dict get $test output]]
+		puts [format "extract_title %s = %s, wanted %s" $input $output [dict get $test output]]
 		incr failed
 	}
 
